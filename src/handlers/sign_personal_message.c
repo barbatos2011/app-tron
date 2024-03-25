@@ -30,10 +30,9 @@
 #include "ui_globals.h"
 
 static const char SIGN_MAGIC[] = "\x19TRON Signed Message:\n";
+cx_sha3_t sha3_global;
 
 int handleSignPersonalMessage(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLength) {
-    cx_sha3_t sha3;
-
     if ((p1 == P1_FIRST) || (p1 == P1_SIGN)) {
         off_t ret = read_bip32_path(workBuffer, dataLength, &transactionContext.bip32_path);
         if (ret < 0) {
@@ -48,8 +47,8 @@ int handleSignPersonalMessage(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint1
         dataLength -= 4;
 
         // Initialize message header + length
-        CX_ASSERT(cx_keccak_init_no_throw(&sha3, 256));
-        CX_ASSERT(cx_hash_no_throw((cx_hash_t *) &sha3,
+        CX_ASSERT(cx_keccak_init_no_throw(&sha3_global, 256));
+        CX_ASSERT(cx_hash_no_throw((cx_hash_t *) &sha3_global,
                                    0,
                                    (const uint8_t *) SIGN_MAGIC,
                                    sizeof(SIGN_MAGIC) - 1,
@@ -58,8 +57,12 @@ int handleSignPersonalMessage(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint1
 
         char tmp[11];
         snprintf((char *) tmp, 11, "%d", (uint32_t) txContent.dataBytes);
-        CX_ASSERT(
-            cx_hash_no_throw((cx_hash_t *) &sha3, 0, (const uint8_t *) tmp, strlen(tmp), NULL, 0));
+        CX_ASSERT(cx_hash_no_throw((cx_hash_t *) &sha3_global,
+                                   0,
+                                   (const uint8_t *) tmp,
+                                   strlen(tmp),
+                                   NULL,
+                                   0));
 
     } else if (p1 != P1_MORE) {
         return io_send_sw(E_INCORRECT_P1_P2);
@@ -72,10 +75,10 @@ int handleSignPersonalMessage(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint1
         return io_send_sw(E_INCORRECT_LENGTH);
     }
 
-    CX_ASSERT(cx_hash_no_throw((cx_hash_t *) &sha3, 0, workBuffer, dataLength, NULL, 0));
+    CX_ASSERT(cx_hash_no_throw((cx_hash_t *) &sha3_global, 0, workBuffer, dataLength, NULL, 0));
     txContent.dataBytes -= dataLength;
     if (txContent.dataBytes == 0) {
-        CX_ASSERT(cx_hash_no_throw((cx_hash_t *) &sha3,
+        CX_ASSERT(cx_hash_no_throw((cx_hash_t *) &sha3_global,
                                    CX_LAST,
                                    workBuffer,
                                    0,

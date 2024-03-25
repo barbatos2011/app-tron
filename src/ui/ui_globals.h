@@ -49,3 +49,5 @@ bool ui_callback_tx_cancel(bool display_menu);
 bool ui_callback_address_ok(bool display_menu);
 bool ui_callback_signMessage_ok(bool display_menu);
 bool ui_callback_ecdh_ok(bool display_menu);
+
+void display_next_plugin_item(bool entering);

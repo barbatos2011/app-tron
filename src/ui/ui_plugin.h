@@ -1,6 +1,6 @@
 /*******************************************************************************
- *   TRON Ledger
- *   (c) 2018 Ledger
+ *   Tron Ledger Wallet
+ *   (c) 2022 Ledger
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,24 +15,21 @@
  *  limitations under the License.
  ********************************************************************************/
 
-#include "os.h"
-#include "cx.h"
+#pragma once
 
-#include "parse.h"
+#include "tron_plugin_interface.h"
 
-#ifndef HELPER_H
-#define HELPER_H
+#define NO_EXTRA_INFO(transactionContext, idx) \
+    (allzeroes(&(transactionContext.extraInfo[idx]), sizeof(extraInfo_t)))
 
-void getAddressFromPublicKey(const uint8_t *publicKey, uint8_t address[static ADDRESS_SIZE]);
+#define NO_NFT_METADATA (NO_EXTRA_INFO(transactionContext, 1))
 
-void getBase58FromPublicKey(const uint8_t *publicKey, char *address58, bool truncate);
+void plugin_ui_get_id(void);
+void plugin_ui_get_item(void);
 
-int signTransaction(transactionContext_t *transactionContext);
-
-int helper_send_response_pubkey(const publicKeyContext_t *pub_key_ctx);
-
-off_t read_bip32_path(const uint8_t *buffer, size_t length, bip32_path_t *path);
-
-int initPublicKeyContext(bip32_path_t *bip32_path, char *address58);
-
-#endif
+void tron_plugin_prepare_query_contract_UI(tronQueryContractUI_t *queryContractUI,
+                                           uint8_t screenIndex,
+                                           char *title,
+                                           uint32_t titleLength,
+                                           char *msg,
+                                           uint32_t msgLength);

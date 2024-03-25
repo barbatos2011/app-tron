@@ -72,7 +72,9 @@ struct pb_istream_s
  *    pb_decode(&stream, MyMessage_fields, &msg);
  */
 bool pb_decode(pb_istream_t *stream, const pb_msgdesc_t *fields, void *dest_struct);
-
+bool pb_decode_contract(pb_istream_t *stream, const pb_msgdesc_t *fields, void *dest_struct, uint32_t *tag);
+bool decode_tag(pb_istream_t *stream, uint32_t *tag);
+bool decode_field_for_contract(pb_istream_t *stream, const pb_msgdesc_t *fields, void *dest_struct, uint32_t *tar_size);
 /* Extended version of pb_decode, with several options to control
  * the decoding process:
  *
