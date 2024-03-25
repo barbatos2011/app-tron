@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 import sys
 import base58
-
+import logging
+import struct
 from contextlib import contextmanager
 from enum import IntEnum
 from pathlib import Path
-from typing import Tuple, Generator
-from struct import unpack
+from typing import Tuple, Generator, Union, Dict, cast
 from bip_utils import Bip39SeedGenerator, Bip32Slip10Secp256k1
 from bip_utils.addr import TrxAddrEncoder
 from eth_keys import keys
@@ -16,6 +16,9 @@ from ragger.backend.interface import BackendInterface, RAPDU
 from ragger.navigator import NavInsID, NavIns
 from ragger.bip import pack_derivation_path
 from conftest import MNEMONIC
+from utils import packed_bip32_path_from_string
+from speculos.client import ApduException
+
 '''
 Tron Protobuf
 '''
@@ -281,7 +284,7 @@ class TronClient:
     def unpackGetVersionResponse(self,
                                  response: bytes) -> Tuple[int, int, int]:
         assert (len(response) == GET_VERSION_RESP_LEN)
-        major, minor, patch = unpack("BBB", response[1:])
+        major, minor, patch = struct.unpack("BBB", response[1:])
         return major, minor, patch
 
     def sign(self,
@@ -344,3 +347,159 @@ class TronClient:
         else:
             return self._client.exchange(CLA, InsType.SIGN, p1, 0x00,
                                          messages[-1])
+
+    def send_apdu(self, apdu: bytes) -> bytes:
+        try:
+            self._client.exchange(cla=apdu[0], ins=apdu[1],
+                                        p1=apdu[2], p2=apdu[3],
+                                        data=apdu[5:])
+        except ApduException as error:
+            raise DeviceException(error_code=error.sw, ins=InsType.INS_SIGN_TX)
+
+class DeviceException(Exception):  # pylint: disable=too-few-public-methods
+    exc: Dict[int, Any] = {
+    }
+
+    def __new__(cls,
+                error_code: int,
+                ins: Union[int, IntEnum, None] = None,
+                message: str = ""
+                ) -> Any:
+        error_message: str = (f"Error in {ins!r} command"
+                              if ins else "Error in command")
+
+        if error_code in DeviceException.exc:
+            return DeviceException.exc[error_code](hex(error_code),
+                                                   error_message,
+                                                   message)
+
+        return UnknownDeviceError(hex(error_code), error_message, message)
+
+class UnknownDeviceError(Exception):
+    pass
+
+
+MAX_APDU_LEN: int = 255
+
+
+def chunked(size, source):
+    for i in range(0, len(source), size):
+        yield source[i:i+size]
+
+
+class TronCommandBuilder:
+    """APDU command builder for the Boilerplate application.
+
+    Parameters
+    ----------
+    debug: bool
+        Whether you want to see logging or not.
+
+    Attributes
+    ----------
+    debug: bool
+        Whether you want to see logging or not.
+
+    """
+    CLA: int = 0xE0
+
+    def __init__(self, debug: bool = False):
+        """Init constructor."""
+        self.debug = debug
+
+    def serialize(self,
+                  cla: int,
+                  ins: Union[int, IntEnum],
+                  p1: int = 0,
+                  p2: int = 0,
+                  cdata: bytes = b"") -> bytes:
+        """Serialize the whole APDU command (header + data).
+
+        Parameters
+        ----------
+        cla : int
+            Instruction class: CLA (1 byte)
+        ins : Union[int, IntEnum]
+            Instruction code: INS (1 byte)
+        p1 : int
+            Instruction parameter 1: P1 (1 byte).
+        p2 : int
+            Instruction parameter 2: P2 (1 byte).
+        cdata : bytes
+            Bytes of command data.
+
+        Returns
+        -------
+        bytes
+            Bytes of a complete APDU command.
+
+        """
+        ins = cast(int, ins.value) if isinstance(ins, IntEnum) else cast(int, ins)
+
+        header: bytes = struct.pack("BBBBB",
+                                    cla,
+                                    ins,
+                                    p1,
+                                    p2,
+                                    len(cdata))  # add Lc to APDU header
+
+        if self.debug:
+            logging.info("header: %s", header.hex())
+            logging.info("cdata:  %s", cdata.hex())
+
+        return header + cdata
+
+
+    def personal_sign_tx(self, bip32_path: str, transaction: bytes) -> Tuple[bool,bytes]:
+        """Command builder for INS_SIGN_PERSONAL_TX.
+
+        Parameters
+        ----------
+        bip32_path : str
+            String representation of BIP32 path.
+        transaction : Transaction
+            Representation of the transaction to be signed.
+
+        Yields
+        -------
+        bytes
+            APDU command chunk for INS_SIGN_PERSONAL_TX.
+
+        """
+
+        cdata = packed_bip32_path_from_string(bip32_path)
+
+        tx: bytes = b"".join([
+            len(transaction).to_bytes(4, byteorder="big"),
+            transaction,
+        ])
+
+        cdata = cdata + tx
+        last_chunk = len(cdata) // MAX_APDU_LEN
+
+        # The generator allows to send apdu frames because we can't send an apdu > 255
+        for i, (chunk) in enumerate(chunked(MAX_APDU_LEN, cdata)):
+            if i == 0 and i == last_chunk:
+                yield True, self.serialize(cla=self.CLA,
+                        ins=InsType.SIGN_PERSONAL_MESSAGE,
+                        p1=0x00,
+                        p2=0x00,
+                        cdata=chunk)
+            elif i == 0:
+                yield False, self.serialize(cla=self.CLA,
+                        ins=InsType.SIGN_PERSONAL_MESSAGE,
+                        p1=0x00,
+                        p2=0x00,
+                        cdata=chunk)
+            elif i == last_chunk:
+                yield True, self.serialize(cla=self.CLA,
+                        ins=InsType.SIGN_PERSONAL_MESSAGE,
+                        p1=0x80,
+                        p2=0x00,
+                        cdata=chunk)
+            else:
+                yield False, self.serialize(cla=self.CLA,
+                        ins=InsType.SIGN_PERSONAL_MESSAGE,
+                        p1=0x80,
+                        p2=0x00,
+                        cdata=chunk)

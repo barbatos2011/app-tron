@@ -23,6 +23,9 @@
 #define MAX_RAW_SIGNATURE        65
 #define MAX_TOKEN_LENGTH         67
 
+#define SELECTOR_SIZE    4
+#define PLUGIN_ID_LENGTH 30
+
 typedef union {
     protocol_TransferContract transfer_contract;
     protocol_TransferAssetContract transfer_asset_contract;
@@ -142,6 +145,37 @@ typedef struct txContent_t {
     uint8_t permission_id;
     uint32_t customData;
 } txContent_t;
+
+typedef struct tokenContext_t {
+    char pluginName[PLUGIN_ID_LENGTH];
+
+    uint8_t data[HASH_SIZE];
+    uint16_t fieldIndex;
+    uint8_t fieldOffset;
+
+    uint8_t pluginUiMaxItems;
+    uint8_t pluginUiCurrentItem;
+    uint8_t pluginUiState;
+
+    union {
+        struct {
+            uint8_t contractAddress[ADDRESS_SIZE];
+            uint8_t methodSelector[SELECTOR_SIZE];
+        };
+        // This needs to be strictly 4 bytes aligned since pointers to it will be casted as
+        // plugin context struct pointers (structs that contain up to 4 bytes wide elements)
+        uint8_t pluginContext[5 * HASH_SIZE] __attribute__((aligned(4)));
+    };
+
+    uint8_t pluginStatus;
+
+} tokenContext_t;
+
+_Static_assert((offsetof(tokenContext_t, pluginContext) % 4) == 0, "Plugin context not aligned");
+
+typedef union {
+    tokenContext_t tokenContext;
+} dataContext_t;
 
 bool setContractType(contractType_e type, char *out, size_t outlen);
 bool setExchangeContractDetail(contractType_e type, char *out, size_t outlen);

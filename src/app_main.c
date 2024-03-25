@@ -41,6 +41,7 @@ const internal_storage_t N_storage_real;
 
 txContent_t txContent;
 txContext_t txContext;
+dataContext_t dataContext;
 
 static void nv_app_state_init(void) {
     if (!HAS_SETTING(S_INITIALIZED)) {
