@@ -24,7 +24,7 @@
 #include "os_io_seproxyhal.h"
 #include "ui_globals.h"
 #include "ui_review_menu.h"
-#include "tron_plugin_handler.h"
+#include "ui_plugin.h"
 
 //////////////////////////////////////////////////////////////////////
 UX_STEP_NOCB(ux_approval_tx_data_warning_step,
@@ -184,6 +184,16 @@ UX_STEP_INIT(
 
 UX_DEF(ux_approval_clear_sign_tx_flow,
        &ux_approval_tx_1_step,
+       &ux_plugin_approval_id_step,
+       &ux_plugin_approval_before_step,
+       &ux_plugin_approval_display_step,
+       &ux_plugin_approval_after_step,
+       &ux_approval_confirm_step,
+       &ux_approval_reject_step);
+
+UX_DEF(ux_approval_clear_sign_tx_data_warning_flow,
+       &ux_approval_tx_1_step,
+       &ux_approval_tx_data_warning_step,
        &ux_plugin_approval_id_step,
        &ux_plugin_approval_before_step,
        &ux_plugin_approval_display_step,
@@ -1013,7 +1023,11 @@ void ux_flow_display(ui_approval_state_t state, bool data_warning) {
                 NULL);
             break;
         case APPROVAL_CLEAR_SIGN_TRANSFER:
-            ux_flow_init(0, ux_approval_clear_sign_tx_flow, NULL);
+            ux_flow_init(
+                0,
+                ((data_warning == true) ? ux_approval_clear_sign_tx_data_warning_flow
+                                        : ux_approval_clear_sign_tx_flow),
+                NULL);
             break;
         default:
             PRINTF("This should not happen !\n");

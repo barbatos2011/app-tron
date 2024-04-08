@@ -12,83 +12,76 @@
 #include "plugin_utils.h"
 #include "tx_content.h"
 
-/*************************************************************************************************
- * Comments provided in this file are quick reminders on the usage of the plugin interface       *
- * Reading the real plugin documentation is GREATLY recommended.                                 *
- * You can find the latest version here:                                                         *
- * https://github.com/LedgerHQ/app-ethereum/blob/develop/doc/ethapp_plugins.adoc                 *
- *************************************************************************************************/
-
 // Interface version. Will be updated every time a breaking change in the interface is introduced.
-typedef enum eth_plugin_interface_version_e {
-    ETH_PLUGIN_INTERFACE_VERSION_1 = 1,
-    ETH_PLUGIN_INTERFACE_VERSION_2 = 2,
-    ETH_PLUGIN_INTERFACE_VERSION_3 = 3,
-    ETH_PLUGIN_INTERFACE_VERSION_4 = 4,
-    ETH_PLUGIN_INTERFACE_VERSION_5 = 5,
-    ETH_PLUGIN_INTERFACE_VERSION_LATEST = 6,
-} eth_plugin_interface_version_t;
+typedef enum tron_plugin_interface_version_e {
+    TRON_PLUGIN_INTERFACE_VERSION_1 = 1,
+    TRON_PLUGIN_INTERFACE_VERSION_2 = 2,
+    TRON_PLUGIN_INTERFACE_VERSION_3 = 3,
+    TRON_PLUGIN_INTERFACE_VERSION_4 = 4,
+    TRON_PLUGIN_INTERFACE_VERSION_5 = 5,
+    TRON_PLUGIN_INTERFACE_VERSION_LATEST = 6,
+} tron_plugin_interface_version_t;
 
 
-// Codes for the different requests Ethereum can send to the plugin
+// Codes for the different requests TRON can send to the plugin
 // The dispatch is handled by the SDK itself, the plugin code does not have to handle it
-typedef enum eth_plugin_msg_e {
-    // Codes for actions the Ethereum app can ask the plugin to perform
-    ETH_PLUGIN_INIT_CONTRACT = 0x0101,
-    ETH_PLUGIN_PROVIDE_PARAMETER = 0x0102,
-    ETH_PLUGIN_FINALIZE = 0x0103,
-    ETH_PLUGIN_PROVIDE_INFO = 0x0104,
-    ETH_PLUGIN_QUERY_CONTRACT_ID = 0x0105,
-    ETH_PLUGIN_QUERY_CONTRACT_UI = 0x0106,
+typedef enum tron_plugin_msg_e {
+    // Codes for actions the TRON app can ask the plugin to perform
+    TRON_PLUGIN_INIT_CONTRACT = 0x0101,
+    TRON_PLUGIN_PROVIDE_PARAMETER = 0x0102,
+    TRON_PLUGIN_FINALIZE = 0x0103,
+    TRON_PLUGIN_PROVIDE_INFO = 0x0104,
+    TRON_PLUGIN_QUERY_CONTRACT_ID = 0x0105,
+    TRON_PLUGIN_QUERY_CONTRACT_UI = 0x0106,
 
-    // Special request: the Ethereum app is checking if we are installed on the device
-    ETH_PLUGIN_CHECK_PRESENCE = 0x01FF,
-} eth_plugin_msg_t;
+    // Special request: the TRON app is checking if we are installed on the device
+    TRON_PLUGIN_CHECK_PRESENCE = 0x01FF,
+} tron_plugin_msg_t;
 
 
-// Reply codes when responding to the Ethereum application
-typedef enum eth_plugin_result_e {
+// Reply codes when responding to the TRON application
+typedef enum tron_plugin_result_e {
     // Unsuccessful return values
-    ETH_PLUGIN_RESULT_ERROR = 0x00,
-    ETH_PLUGIN_RESULT_UNAVAILABLE = 0x01,
-    ETH_PLUGIN_RESULT_UNSUCCESSFUL = 0x02,  // Used for comparison
+    TRON_PLUGIN_RESULT_ERROR = 0x00,
+    TRON_PLUGIN_RESULT_UNAVAILABLE = 0x01,
+    TRON_PLUGIN_RESULT_UNSUCCESSFUL = 0x02,  // Used for comparison
 
     // Successful return values
-    ETH_PLUGIN_RESULT_SUCCESSFUL = 0x03,  // Used for comparison
-    ETH_PLUGIN_RESULT_OK = 0x04,
-    ETH_PLUGIN_RESULT_OK_ALIAS = 0x05,
-    ETH_PLUGIN_RESULT_FALLBACK = 0x06,
-} eth_plugin_result_t;
+    TRON_PLUGIN_RESULT_SUCCESSFUL = 0x03,  // Used for comparison
+    TRON_PLUGIN_RESULT_OK = 0x04,
+    TRON_PLUGIN_RESULT_OK_ALIAS = 0x05,
+    TRON_PLUGIN_RESULT_FALLBACK = 0x06,
+} tron_plugin_result_t;
 
 
-// Format of UI the Ethereum application has to use for this plugin
-typedef enum eth_ui_type_e {
-    // If uiType is UI_AMOUNT_ADDRESS, Ethereum will use the amount/address UI
+// Format of UI the TRON application has to use for this plugin
+typedef enum tron_ui_type_e {
+    // If uiType is UI_AMOUNT_ADDRESS, TRON will use the amount/address UI
     // the amount and address provided by the plugin will be used
     // If tokenLookup1 is set, the amount is provided for this token
-    ETH_UI_TYPE_AMOUNT_ADDRESS = 0x01,
+    TRON_UI_TYPE_AMOUNT_ADDRESS = 0x01,
 
-    // If uiType is UI_TYPE_GENERIC, Ethereum will use the dedicated ETH plugin UI
+    // If uiType is UI_TYPE_GENERIC, TRON will use the dedicated ETH plugin UI
     // the ETH application provides tokens if requested then prompts for each UI field
     // The first field is forced by the ETH app to be the name + version of the plugin handling the
     // request. The last field is the fee amount
-    ETH_UI_TYPE_GENERIC = 0x02,
-} eth_ui_type_t;
+    TRON_UI_TYPE_GENERIC = 0x02,
+} tron_ui_type_t;
 
 
 // Scratch objects and utilities available to the plugin READ-WRITE
-typedef struct ethPluginSharedRW_s {
+typedef struct tronPluginSharedRW_s {
     cx_sha3_t *sha3;
-} ethPluginSharedRW_t;
+} tronPluginSharedRW_t;
 
 
 // Transaction data available to the plugin READ-ONLY
-typedef struct ethPluginSharedRO_s {
+typedef struct tronPluginSharedRO_s {
     txContent_t *txContent;
-} ethPluginSharedRO_t;
+} tronPluginSharedRO_t;
 
 
-// Plugin-only memory allocated by the Ethereum application and used by the plugin.
+// Plugin-only memory allocated by the TRON application and used by the plugin.
 #define PLUGIN_CONTEXT_SIZE (5 * INT256_LENGTH)
 // It is recommended to cast the raw uin8_t array to a structure meaningful for your plugin
 // Helper to check that the actual plugin context structure is not bigger than the allocated memory
@@ -98,7 +91,7 @@ typedef struct ethPluginSharedRO_s {
 
 /*
  * HANDLERS AND PARAMETERS
- * Parameters associated with the requests the Ethereum application can ask the plugin to perform
+ * Parameters associated with the requests the TRON application can ask the plugin to perform
  * The plugin SDK will automatically call the relevant handler for the received code, so the plugin
  * has to define each of the handler functions declared below.
  */
@@ -106,44 +99,44 @@ typedef struct ethPluginSharedRO_s {
 
 // Init Contract
 
-typedef struct ethPluginInitContract_s {
-    eth_plugin_interface_version_t interfaceVersion;
-    eth_plugin_result_t result;
+typedef struct tronPluginInitContract_s {
+    tron_plugin_interface_version_t interfaceVersion;
+    tron_plugin_result_t result;
 
     // in
-    ethPluginSharedRW_t *pluginSharedRW;
-    ethPluginSharedRO_t *pluginSharedRO;
+    tronPluginSharedRW_t *pluginSharedRW;
+    tronPluginSharedRO_t *pluginSharedRO;
     uint8_t *pluginContext;
     size_t pluginContextLength;
     const uint8_t *selector;  // 4 bytes selector
     size_t dataSize;
 
-    char *alias;  // 29 bytes alias if ETH_PLUGIN_RESULT_OK_ALIAS set
+    char *alias;  // 29 bytes alias if TRON_PLUGIN_RESULT_OK_ALIAS set
 
-} ethPluginInitContract_t;
-// void handle_init_contract(ethPluginInitContract_t *parameters);
+} tronPluginInitContract_t;
+// void handle_init_contract(tronPluginInitContract_t *parameters);
 
 
 // Provide parameter
 
-typedef struct ethPluginProvideParameter_s {
-    ethPluginSharedRW_t *pluginSharedRW;
-    ethPluginSharedRO_t *pluginSharedRO;
+typedef struct tronPluginProvideParameter_s {
+    tronPluginSharedRW_t *pluginSharedRW;
+    tronPluginSharedRO_t *pluginSharedRO;
     uint8_t *pluginContext; // PLUGIN_CONTEXT_SIZE
     const uint8_t *parameter;  // 32 bytes parameter
     uint32_t parameterOffset;
 
-    eth_plugin_result_t result;
+    tron_plugin_result_t result;
 
-} ethPluginProvideParameter_t;
-// void handle_provide_parameter(ethPluginProvideParameter_t *parameters);
+} tronPluginProvideParameter_t;
+// void handle_provide_parameter(tronPluginProvideParameter_t *parameters);
 
 
 // Finalize
 
-typedef struct ethPluginFinalize_s {
-    ethPluginSharedRW_t *pluginSharedRW;
-    ethPluginSharedRO_t *pluginSharedRO;
+typedef struct tronPluginFinalize_s {
+    tronPluginSharedRW_t *pluginSharedRW;
+    tronPluginSharedRO_t *pluginSharedRO;
     uint8_t *pluginContext; // PLUGIN_CONTEXT_SIZE
 
     uint8_t *tokenLookup1;  // set by the plugin if a token should be looked up
@@ -153,19 +146,19 @@ typedef struct ethPluginFinalize_s {
     const uint8_t *address;  // set to the destination address if uiType is UI_AMOUNT_ADDRESS. Set
                              // to the user's address if uiType is UI_TYPE_GENERIC
 
-    eth_ui_type_t uiType;
+    tron_ui_type_t uiType;
     uint8_t numScreens;  // ignored if uiType is UI_AMOUNT_ADDRESS
-    eth_plugin_result_t result;
+    tron_plugin_result_t result;
 
-} ethPluginFinalize_t;
-// void handle_finalize(ethPluginFinalize_t *parameters);
+} tronPluginFinalize_t;
+// void handle_finalize(tronPluginFinalize_t *parameters);
 
 
 // Provide token
 
-typedef struct ethPluginProvideInfo_s {
-    ethPluginSharedRW_t *pluginSharedRW;
-    ethPluginSharedRO_t *pluginSharedRO;
+typedef struct tronPluginProvideInfo_s {
+    tronPluginSharedRW_t *pluginSharedRW;
+    tronPluginSharedRO_t *pluginSharedRO;
     uint8_t *pluginContext; // PLUGIN_CONTEXT_SIZE
 
     union extraInfo_t *item1;  // set by the ETH application, to be saved by the plugin
@@ -174,19 +167,19 @@ typedef struct ethPluginProvideInfo_s {
     uint8_t additionalScreens;  // Used by the plugin if it needs to display additional screens
                                 // based on the information received from the token definitions.
 
-    eth_plugin_result_t result;
+    tron_plugin_result_t result;
 
-} ethPluginProvideInfo_t;
-// void handle_provide_token(ethPluginProvideInfo_t *parameters);
+} tronPluginProvideInfo_t;
+// void handle_provide_token(tronPluginProvideInfo_t *parameters);
 
 
 // Query Contract name and version
 
 // This is always called on the non aliased contract
 
-typedef struct ethQueryContractID_s {
-    ethPluginSharedRW_t *pluginSharedRW;
-    ethPluginSharedRO_t *pluginSharedRO;
+typedef struct tronQueryContractID_s {
+    tronPluginSharedRW_t *pluginSharedRW;
+    tronPluginSharedRO_t *pluginSharedRO;
     uint8_t *pluginContext; // PLUGIN_CONTEXT_SIZE
 
     char *name;
@@ -194,17 +187,17 @@ typedef struct ethQueryContractID_s {
     char *version;
     size_t versionLength;
 
-    eth_plugin_result_t result;
+    tron_plugin_result_t result;
 
-} ethQueryContractID_t;
-// void handle_query_contract_id(ethQueryContractID_t *parameters);
+} tronQueryContractID_t;
+// void handle_query_contract_id(tronQueryContractID_t *parameters);
 
 
 // Query Contract UI
 
-typedef struct ethQueryContractUI_s {
-    ethPluginSharedRW_t *pluginSharedRW;
-    ethPluginSharedRO_t *pluginSharedRO;
+typedef struct tronQueryContractUI_s {
+    tronPluginSharedRW_t *pluginSharedRW;
+    tronPluginSharedRO_t *pluginSharedRO;
     union extraInfo_t *item1;
     union extraInfo_t *item2;
     char network_ticker[MAX_TICKER_LEN];
@@ -216,9 +209,9 @@ typedef struct ethQueryContractUI_s {
     char *msg;
     size_t msgLength;
 
-    eth_plugin_result_t result;
+    tron_plugin_result_t result;
 
-} ethQueryContractUI_t;
-// void handle_query_contract_ui(ethQueryContractUI_t *parameters);
+} tronQueryContractUI_t;
+// void handle_query_contract_ui(tronQueryContractUI_t *parameters);
 
 // clang-format on

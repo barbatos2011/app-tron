@@ -197,6 +197,8 @@ bool adjustDecimals(const char *src,
 void initTx(txContext_t *context, txContent_t *content);
 
 parserStatus_e processTx(uint8_t *buffer, uint32_t length, txContent_t *content);
+parserStatus_e processTxForClearSign(uint8_t *buffer, uint32_t length, txContent_t *content);
+uint32_t processTxForCSMultiParts(uint8_t *buffer, uint32_t length, txContent_t *content, uint8_t state);
 
 extern txContent_t txContent;
 extern txContext_t txContext;

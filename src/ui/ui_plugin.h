@@ -1,6 +1,6 @@
 /*******************************************************************************
  *   Tron Ledger Wallet
- *   (c) 2023 Ledger
+ *   (c) 2022 Ledger
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,22 +15,21 @@
  *  limitations under the License.
  ********************************************************************************/
 
-// Codes for the different requests Tron can send to the plugin
-// The dispatch is handled by the SDK itself, the plugin code does not have to handle it
-typedef enum tron_plugin_msg_e {
-    // Codes for actions the Tron app can ask the plugin to perform
-    TRON_PLUGIN_INIT_CONTRACT = 0x0101,
-    TRON_PLUGIN_PROVIDE_PARAMETER = 0x0102,
-    TRON_PLUGIN_FINALIZE = 0x0103,
-    TRON_PLUGIN_PROVIDE_INFO = 0x0104,
-    TRON_PLUGIN_QUERY_CONTRACT_ID = 0x0105,
-    TRON_PLUGIN_QUERY_CONTRACT_UI = 0x0106,
+#pragma once
 
-    // Special request: the Tron app is checking if we are installed on the device
-    TRON_PLUGIN_CHECK_PRESENCE = 0x01FF,
-} tron_plugin_msg_t;
+#include "tron_plugin_interface.h"
 
-typedef enum {
-    PLUGIN_UI_INSIDE = 0,
-    PLUGIN_UI_OUTSIDE
-} plugin_ui_state_t;
+#define NO_EXTRA_INFO(transactionContext, idx) \
+    (allzeroes(&(transactionContext.extraInfo[idx]), sizeof(extraInfo_t)))
+
+#define NO_NFT_METADATA (NO_EXTRA_INFO(transactionContext, 1))
+
+void plugin_ui_get_id(void);
+void plugin_ui_get_item(void);
+
+void tron_plugin_prepare_query_contract_UI(tronQueryContractUI_t *queryContractUI,
+                                          uint8_t screenIndex,
+                                          char *title,
+                                          uint32_t titleLength,
+                                          char *msg,
+                                          uint32_t msgLength);

@@ -321,7 +321,9 @@ class TronClient:
 
         # Send all the messages expect the last
         for i, data in enumerate(messages[:-1]):
-            if i == 0:
+            if i == 0 and token_pos == 1:
+                p1 = P1.SIGN
+            elif i == 0:
                 p1 = P1.FIRST
             else:
                 if i < token_pos:
@@ -573,6 +575,38 @@ class TronCommandBuilder:
             else:
                 yield False, self._serialize(cla=self.CLA,
                         ins=InsType.SIGN_PERSONAL_MESSAGE,
+                        p1=0x80,
+                        p2=0x00,
+                        cdata=chunk)
+
+    def clear_sign_tx(self, bip32_path: str, transaction: bytes) -> Tuple[bool,bytes]:
+        cdata = packed_bip32_path_from_string(bip32_path)
+        cdata = cdata + transaction
+        last_chunk = len(cdata) // MAX_APDU_LEN
+
+        # The generator allows to send apdu frames because we can't send an apdu > 255
+        for i, (chunk) in enumerate(chunked(MAX_APDU_LEN, cdata)):
+            if i == 0 and i == last_chunk:
+                yield True, self._serialize(cla=self.CLA,
+                        ins=InsType.CLEAR_SIGN,
+                        p1=0x10,
+                        p2=0x00,
+                        cdata=chunk)
+            elif i == 0:
+                yield False, self._serialize(cla=self.CLA,
+                        ins=InsType.CLEAR_SIGN,
+                        p1=0x00,
+                        p2=0x00,
+                        cdata=chunk)
+            elif i == last_chunk:
+                yield True, self._serialize(cla=self.CLA,
+                        ins=InsType.CLEAR_SIGN,
+                        p1=0x90,
+                        p2=0x00,
+                        cdata=chunk)
+            else:
+                yield False, self._serialize(cla=self.CLA,
+                        ins=InsType.CLEAR_SIGN,
                         p1=0x80,
                         p2=0x00,
                         cdata=chunk)

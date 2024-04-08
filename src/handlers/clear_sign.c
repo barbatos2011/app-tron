@@ -30,9 +30,9 @@
 #include "parse.h"
 #include "settings.h"
 #include "tron_plugin_interface.h"
-#include "tron_plugin_handler.h"
+#include "tron_plugin_helper.h"
 #include "plugin_utils.h"
-#include "plugin_interface.h"
+#include "tron_plugin_helper.h"
 
 #ifdef HAVE_SWAP
 #include "swap.h"
@@ -58,23 +58,23 @@ void io_seproxyhal_send_status(uint32_t sw) {
 
 void reportFinalizeError(bool direct) {
     reset_app_context();
-    if (direct) {
-        THROW(E_INCORRECT_DATA);
-    } else {
-        io_seproxyhal_send_status(E_INCORRECT_DATA);
-        ui_idle();
-    }
+    // if (direct) {
+    //     THROW(E_INCORRECT_DATA);
+    // } else {
+        // io_seproxyhal_send_status(E_INCORRECT_DATA);
+        io_send_sw(E_INCORRECT_DATA);
+        // ui_idle();
+    // }
 }
 
-
-__attribute__((noinline)) static uint16_t finalize_parsing_helper(bool direct, bool *use_standard_UI) {
-    char displayBuffer[50];
-    uint8_t decimals = WEI_TO_ETHER;
+__attribute__((noinline)) static uint8_t finalize_parsing_helper(bool direct) {
+    // char displayBuffer[50];
+    // uint8_t decimals = WEI_TO_ETHER;
     // uint64_t chain_id = get_tx_chain_id();
     // const char *ticker = get_displayable_ticker(&chain_id, chainConfig);
-    const char *ticker = "TRX";
-    ethPluginFinalize_t pluginFinalize;
-    cx_err_t error = CX_INTERNAL_ERROR;
+    // const char *ticker = "TRX";
+    tronPluginFinalize_t pluginFinalize;
+    // cx_err_t error = CX_INTERNAL_ERROR;
 
     // // Store the hash
     // CX_CHECK(cx_hash_no_throw((cx_hash_t *) &global_sha3,
@@ -85,11 +85,11 @@ __attribute__((noinline)) static uint16_t finalize_parsing_helper(bool direct, b
     //                           32));
 
     // Finalize the plugin handling
-    if (dataContext.tokenContext.pluginStatus >= ETH_PLUGIN_RESULT_SUCCESSFUL) {
+    if (dataContext.tokenContext.pluginStatus >= TRON_PLUGIN_RESULT_SUCCESSFUL) {
         tron_plugin_prepare_finalize(&pluginFinalize);
         pluginFinalize.address = txContent.account;
 
-        if (!tron_plugin_call(ETH_PLUGIN_FINALIZE, (void *) &pluginFinalize)) {
+        if (!tron_plugin_call(TRON_PLUGIN_FINALIZE, (void *) &pluginFinalize)) {
             PRINTF("Plugin finalize call failed\n");
             reportFinalizeError(direct);
             if (!direct) {
@@ -97,7 +97,7 @@ __attribute__((noinline)) static uint16_t finalize_parsing_helper(bool direct, b
             }
         }
         // Lookup tokens if requested
-        ethPluginProvideInfo_t pluginProvideInfo;
+        tronPluginProvideInfo_t pluginProvideInfo;
         tron_plugin_prepare_provide_info(&pluginProvideInfo);
         if ((pluginFinalize.tokenLookup1 != NULL) || (pluginFinalize.tokenLookup2 != NULL)) {
             if (pluginFinalize.tokenLookup1 != NULL) {
@@ -114,8 +114,8 @@ __attribute__((noinline)) static uint16_t finalize_parsing_helper(bool direct, b
                     PRINTF("Token2 ticker: %s\n", pluginProvideInfo.item2->token.ticker);
                 }
             }
-            if (tron_plugin_call(ETH_PLUGIN_PROVIDE_INFO, (void *) &pluginProvideInfo) <=
-                ETH_PLUGIN_RESULT_UNSUCCESSFUL) {
+            if (tron_plugin_call(TRON_PLUGIN_PROVIDE_INFO, (void *) &pluginProvideInfo) <=
+                TRON_PLUGIN_RESULT_UNSUCCESSFUL) {
                 PRINTF("Plugin provide token call failed\n");
                 reportFinalizeError(direct);
                 if (!direct) {
@@ -124,18 +124,18 @@ __attribute__((noinline)) static uint16_t finalize_parsing_helper(bool direct, b
             }
             pluginFinalize.result = pluginProvideInfo.result;
         }
-        if (pluginFinalize.result != ETH_PLUGIN_RESULT_FALLBACK) {
+        if (pluginFinalize.result != TRON_PLUGIN_RESULT_FALLBACK) {
             // Handle the right interface
             switch (pluginFinalize.uiType) {
-                case ETH_UI_TYPE_GENERIC:
+                case TRON_UI_TYPE_GENERIC:
                     // Use the dedicated ETH plugin UI
-                    *use_standard_UI = false;
+                    // *use_standard_UI = false;
                     // Add the number of screens + the number of additional screens to get the total
                     // number of screens needed.
                     dataContext.tokenContext.pluginUiMaxItems =
                         pluginFinalize.numScreens + pluginProvideInfo.additionalScreens;
                     break;
-                // case ETH_UI_TYPE_AMOUNT_ADDRESS:
+                // case TRON_UI_TYPE_AMOUNT_ADDRESS:
                 //     // Use the standard ETH UI as this plugin uses the amount/address UI
                 //     *use_standard_UI = true;
                 //     if ((pluginFinalize.amount == NULL) || (pluginFinalize.address == NULL)) {
@@ -174,11 +174,12 @@ __attribute__((noinline)) static uint16_t finalize_parsing_helper(bool direct, b
         G_swap_response_ready = true;
     }
 
-    // // User has just validated a swap but ETH received apdus about a non standard plugin / contract
+    // User has just validated a swap but ETH received apdus about a non standard plugin / contract
     // if (G_called_from_swap && !*use_standard_UI) {
-    //     PRINTF("ERR_SILENT_MODE_CHECK_FAILED, G_called_from_swap\n");
-    //     THROW(ERR_SILENT_MODE_CHECK_FAILED);
-    // }
+    if (G_called_from_swap) {
+        PRINTF("ERR_SILENT_MODE_CHECK_FAILED, G_called_from_swap\n");
+        io_send_sw(E_SWAP_CHECKING_FAIL);
+    }
 #endif  // HAVE_SWAP
 
     // if (tmpContent.txContent.dataPresent && !N_storage.dataAllowed) {
@@ -265,15 +266,15 @@ __attribute__((noinline)) static uint16_t finalize_parsing_helper(bool direct, b
     // get_network_as_string(strings.common.network_name, sizeof(strings.common.network_name));
     // PRINTF("Network: %s\n", strings.common.network_name);
     return 0;
-end:
-    return 10;
+// end:
+//     return 10;
 }
 
 
-uint16_t finalizeParsing(bool direct) {
-    bool use_standard_UI = true;
+uint8_t finalizeParsing(bool direct, bool warning) {
+    // bool use_standard_UI = true;
     // bool no_consent_check;
-    uint16_t txResult = finalize_parsing_helper(direct, &use_standard_UI);
+    uint8_t txResult = finalize_parsing_helper(direct);
     if (txResult != 0) {
         return txResult;
     }
@@ -294,9 +295,10 @@ uint16_t finalizeParsing(bool direct) {
             dataContext.tokenContext.pluginUiState = PLUGIN_UI_OUTSIDE;
             dataContext.tokenContext.pluginUiCurrentItem = 0;
             // ux_approve_tx(true);
-            ux_flow_display(APPROVAL_CLEAR_SIGN_TRANSFER, false);
+            ux_flow_display(APPROVAL_CLEAR_SIGN_TRANSFER, warning);
         // }
     // }
+    return 0;
 }
 
 int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLength) {
@@ -345,8 +347,21 @@ int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLe
     }
 #endif
 
+    uint16_t txResult;
     // process buffer
-    uint16_t txResult = processTxForClearSign(workBuffer, dataLength, &txContent);
+    if (p1 == P1_SIGN) {
+        txResult = processTxForClearSign(workBuffer, dataLength, &txContent);
+    } else {
+        // txResult = processTxForCSMultiParts(workBuffer, dataLength, &txContent, p1);
+        uint32_t ret = processTxForCSMultiParts(workBuffer, dataLength, &txContent, p1);
+        // return io_send_sw(txContent.exchangeID);
+        if (ret == 0 || ret == 1)
+        {
+            return io_send_sw(E_OK);
+        }
+        return io_send_sw(ret);
+    }
+    return io_send_sw(txResult);
 
     PRINTF("txResult: %04x\n", txResult);
     switch (txResult) {
@@ -380,14 +395,17 @@ int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLe
                                transactionContext.hash,
                                32));
 
-    if (txContent.permission_id > 0) {
-        PRINTF("Set permission_id...\n");
-        snprintf((char *) fromAddress, 5, "P%d - ", txContent.permission_id);
-        getBase58FromAddress(txContent.account, fromAddress + 4, HAS_SETTING(S_TRUNCATE_ADDRESS));
-    } else {
-        PRINTF("Regular transaction...\n");
-        getBase58FromAddress(txContent.account, fromAddress, HAS_SETTING(S_TRUNCATE_ADDRESS));
-    }
+    // if (txContent.permission_id > 0) {
+    //     PRINTF("Set permission_id...\n");
+    //     snprintf((char *) fromAddress, 5, "P%d - ", txContent.permission_id);
+    //     getBase58FromAddress(txContent.account, fromAddress + 4, HAS_SETTING(S_TRUNCATE_ADDRESS));
+    // } else {
+    //     PRINTF("Regular transaction...\n");
+    //     getBase58FromAddress(txContent.account, fromAddress, HAS_SETTING(S_TRUNCATE_ADDRESS));
+    // }
+
+    bool data_warning = ((txContent.dataBytes > 0) ? true : false);
+    return 0;
 
 #ifdef HAVE_SWAP
     if (G_called_from_swap) {
@@ -405,10 +423,14 @@ int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLe
             }
         }
 
+        if (data_warning) {
+            PRINTF("Refused data warning when in SWAP mode\n");
+            return io_send_sw(E_SWAP_CHECKING_FAIL);
+        }
     }
 #endif  // HAVE_SWAP
 
-    txResult = finalizeParsing(false);
+    txResult = finalizeParsing(false, data_warning);
     if (txResult != 0)
     {
         return io_send_sw(txResult);

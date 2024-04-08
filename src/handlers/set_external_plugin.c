@@ -22,7 +22,7 @@
 #include "os_io_seproxyhal.h"
 #include "public_keys.h"
 #include "app_errors.h"
-#include "plugin_interface.h"
+#include "tron_plugin_helper.h"
 
 
 int handleSetExternalPlugin(uint8_t p1, uint8_t p2, const uint8_t *workBuffer, uint16_t dataLength) {
