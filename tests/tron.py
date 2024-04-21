@@ -16,7 +16,7 @@ from ragger.backend.interface import BackendInterface, RAPDU
 from ragger.navigator import NavInsID, NavIns
 from ragger.bip import pack_derivation_path
 from conftest import MNEMONIC
-from utils import packed_bip32_path_from_string
+from utils import packed_bip32_path_from_string, write_varint
 from speculos.client import ApduException
 
 '''
@@ -64,7 +64,7 @@ class InsType(IntEnum):
     GET_APP_CONFIGURATION = 0x06  # Version and settings
     SIGN_PERSONAL_MESSAGE = 0x08
     GET_ECDH_SECRET = 0x0A
-
+    EXTERNAL_PLUGIN_SETUP     = 0x12
 
 class Errors(IntEnum):
     OK = 0x9000
@@ -386,7 +386,6 @@ def chunked(size, source):
     for i in range(0, len(source), size):
         yield source[i:i+size]
 
-
 class TronCommandBuilder:
     """APDU command builder for the Boilerplate application.
 
@@ -407,12 +406,12 @@ class TronCommandBuilder:
         """Init constructor."""
         self.debug = debug
 
-    def serialize(self,
-                  cla: int,
-                  ins: Union[int, IntEnum],
-                  p1: int = 0,
-                  p2: int = 0,
-                  cdata: bytes = b"") -> bytes:
+    def _serialize(self,
+                   cla: int,
+                   ins: InsType,
+                   p1: int,
+                   p2: int,
+                   cdata: bytes = bytes()) -> bytes:
         """Serialize the whole APDU command (header + data).
 
         Parameters
@@ -434,21 +433,33 @@ class TronCommandBuilder:
             Bytes of a complete APDU command.
 
         """
-        ins = cast(int, ins.value) if isinstance(ins, IntEnum) else cast(int, ins)
 
-        header: bytes = struct.pack("BBBBB",
-                                    cla,
-                                    ins,
-                                    p1,
-                                    p2,
-                                    len(cdata))  # add Lc to APDU header
-
-        if self.debug:
-            logging.info("header: %s", header.hex())
-            logging.info("cdata:  %s", cdata.hex())
-
+        header = bytearray()
+        header.append(cla)
+        header.append(ins)
+        header.append(p1)
+        header.append(p2)
+        header.append(len(cdata))
         return header + cdata
 
+    def _string_to_bytes(self, string: str) -> bytes:
+        data = bytearray()
+        for char in string:
+            data.append(ord(char))
+        return data
+
+    def set_external_plugin(self, plugin_name: str, contract_address: bytes, selector: bytes, sig: bytes) -> bytes:
+        data = bytearray()
+        data.append(len(plugin_name))
+        data += self._string_to_bytes(plugin_name)
+        data += contract_address
+        data += selector
+        data += sig
+
+        return self._serialize(self.CLA, InsType.EXTERNAL_PLUGIN_SETUP,
+                               P1.FIRST,
+                               0x00,
+                               data)
 
     def personal_sign_tx(self, bip32_path: str, transaction: bytes) -> Tuple[bool,bytes]:
         """Command builder for INS_SIGN_PERSONAL_TX.
@@ -480,25 +491,25 @@ class TronCommandBuilder:
         # The generator allows to send apdu frames because we can't send an apdu > 255
         for i, (chunk) in enumerate(chunked(MAX_APDU_LEN, cdata)):
             if i == 0 and i == last_chunk:
-                yield True, self.serialize(cla=self.CLA,
+                yield True, self._serialize(cla=self.CLA,
                         ins=InsType.SIGN_PERSONAL_MESSAGE,
                         p1=0x00,
                         p2=0x00,
                         cdata=chunk)
             elif i == 0:
-                yield False, self.serialize(cla=self.CLA,
+                yield False, self._serialize(cla=self.CLA,
                         ins=InsType.SIGN_PERSONAL_MESSAGE,
                         p1=0x00,
                         p2=0x00,
                         cdata=chunk)
             elif i == last_chunk:
-                yield True, self.serialize(cla=self.CLA,
+                yield True, self._serialize(cla=self.CLA,
                         ins=InsType.SIGN_PERSONAL_MESSAGE,
                         p1=0x80,
                         p2=0x00,
                         cdata=chunk)
             else:
-                yield False, self.serialize(cla=self.CLA,
+                yield False, self._serialize(cla=self.CLA,
                         ins=InsType.SIGN_PERSONAL_MESSAGE,
                         p1=0x80,
                         p2=0x00,

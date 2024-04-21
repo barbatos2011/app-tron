@@ -24,6 +24,9 @@
 #include "settings.h"
 #include "tokens.h"
 #include "app_errors.h"
+#include "tron_plugin_interface.h"
+#include "tron_plugin_handler.h"
+
 
 tokenDefinition_t *getKnownToken(txContent_t *context) {
     uint16_t i;
@@ -880,6 +883,164 @@ parserStatus_e processTx(uint8_t *buffer, uint32_t length, txContent_t *content)
                 break;
             case protocol_Transaction_Contract_ContractType_AccountPermissionUpdateContract:
                 ret = account_permission_update_contract(content, &tx_stream);
+                break;
+            default:
+                return USTREAM_FAULT;
+        }
+        return ret ? USTREAM_PROCESSING : USTREAM_FAULT;
+    }
+
+    return USTREAM_PROCESSING;
+}
+
+
+bool process_trigger_smart_contract_data_v2(pb_istream_t *stream, txContent_t *content) {
+    // If handling the beginning of the data field, assume that the function selector is
+    // present
+    if (stream->bytes_left < SELECTOR_SIZE) {
+        PRINTF("Missing function selector\n");
+        return false;
+    }
+
+    uint8_t buf[32];  // a single encoded TVM value
+    // method selector
+    if (!pb_read(stream, buf, 4)) {
+        return false;
+    }
+    content->customSelector = U4BE(buf, 0);
+    // check is plugin call or not
+    if (memcmp(content->contractAddress, dataContext.tokenContext.contractAddress, ADDRESS_SIZE) != 0 || memcmp(content->customSelector, dataContext.tokenContext.methodSelector, SELECTOR_SIZE) != 0) {
+        return false;
+    }
+
+    ethPluginInitContract_t pluginInit;
+    dataContext.tokenContext.pluginStatus = ETH_PLUGIN_RESULT_UNAVAILABLE;
+    // // If contract debugging mode is activated, do not go through the plugin activation
+    // // as they wouldn't be displayed if the plugin consumes all data but fallbacks
+    // if (!N_storage.contractDetails) {
+        tron_plugin_prepare_init(&pluginInit,
+                                buf,
+                                SELECTOR_SIZE);
+        dataContext.tokenContext.pluginStatus =
+            tron_plugin_perform_init(content->contractAddress, &pluginInit);
+    // }
+    PRINTF("pluginstatus %d\n", dataContext.tokenContext.pluginStatus);
+    if (dataContext.tokenContext.pluginStatus == ETH_PLUGIN_RESULT_ERROR) {
+        PRINTF("Plugin error\n");
+        return false;
+    } else if (dataContext.tokenContext.pluginStatus >= ETH_PLUGIN_RESULT_SUCCESSFUL) {
+        dataContext.tokenContext.fieldIndex = 0;
+        dataContext.tokenContext.fieldOffset = 0;
+    }
+
+    uint32_t blockSize;
+    uint32_t copySize;
+    while(stream->bytes_left > 0 ) {
+
+        blockSize = 32 - (dataContext.tokenContext.fieldOffset % 32);
+        copySize = (stream->bytes_left < blockSize ? stream->bytes_left : blockSize);
+        PRINTF("currentFieldPos %d copySize %d\n", context->currentFieldPos, copySize);
+
+        if (!pb_read(stream, dataContext.tokenContext.data+dataContext.tokenContext.fieldOffset, copySize)) {
+            return false;
+        }
+
+        dataContext.tokenContext.fieldOffset += copySize;
+        if (copySize == blockSize) {
+            // Can process or display
+            if (dataContext.tokenContext.pluginStatus >= ETH_PLUGIN_RESULT_SUCCESSFUL) {
+                ethPluginProvideParameter_t pluginProvideParameter;
+                tron_plugin_prepare_provide_parameter(&pluginProvideParameter,
+                                                        dataContext.tokenContext.data,
+                                                        dataContext.tokenContext.fieldIndex * 32 + 4);
+                if (!tron_plugin_call(ETH_PLUGIN_PROVIDE_PARAMETER,
+                                        (void *) &pluginProvideParameter)) {
+                    PRINTF("Plugin parameter call failed\n");
+                    return false;
+                }
+                dataContext.tokenContext.fieldIndex++;
+                dataContext.tokenContext.fieldOffset = 0;
+                memset(dataContext.tokenContext.data, 0, sizeof(dataContext.tokenContext.data));
+                continue;
+            }
+
+            dataContext.tokenContext.fieldIndex++;
+            dataContext.tokenContext.fieldOffset = 0;
+        } else {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool trigger_smart_contract_v2(txContent_t *content, pb_istream_t *stream) {
+    buffer_t contract_buffer;
+    msg.trigger_smart_contract.data.funcs.decode = pb_decode_contract_parameter;
+    msg.trigger_smart_contract.data.arg = &contract_buffer;
+
+    if (!pb_decode(stream, protocol_TriggerSmartContract_fields, &msg.trigger_smart_contract)) {
+        return false;
+    }
+
+    COPY_ADDRESS(content->account, &msg.trigger_smart_contract.owner_address);
+    COPY_ADDRESS(content->contractAddress, &msg.trigger_smart_contract.contract_address);
+    content->amount[0] = msg.trigger_smart_contract.call_value;
+
+    pb_istream_t tx_stream = pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
+
+    return process_trigger_smart_contract_data_v2(&tx_stream, content);
+}
+
+parserStatus_e processTxForClearSign(uint8_t *buffer, uint32_t length, txContent_t *content) {
+    protocol_Transaction_raw transaction;
+
+    if (length == 0) {
+        return USTREAM_FINISHED;
+    }
+
+    memset(&transaction, 0, sizeof(transaction));
+    memset(&msg, 0, sizeof(msg));
+
+    pb_istream_t stream = pb_istream_from_buffer(buffer, length);
+
+    /* Set callbacks to retrieve "Contract" message bounds.
+     * This is required because contract type is not necessarily parsed at the
+     * time of the transaction is decoded (fields are not required to be ordered)
+     * and deserializing the nested contract inside the message requires too much
+     * stack for Nano S
+     */
+    buffer_t contract_buffer;
+    transaction.contract->parameter.value.funcs.decode = pb_decode_contract_parameter;
+    transaction.contract->parameter.value.arg = &contract_buffer;
+
+    /* Set callback to determine if transaction contains custom data.
+     * This allows to retrieve the size of arbitrary data. */
+    transaction.custom_data.funcs.decode = pb_get_tx_data_size;
+    transaction.custom_data.arg = &content->dataBytes;
+
+    if (!pb_decode(&stream, protocol_Transaction_raw_fields, &transaction)) {
+        return USTREAM_FAULT;
+    }
+
+    if (!HAS_SETTING(S_DATA_ALLOWED) && content->dataBytes != 0) {
+        return USTREAM_MISSING_SETTING_DATA_ALLOWED;
+    }
+
+    /* Parse contract parameters if any...
+       and it may come in different message chunk
+       so test if chunk has the contract
+     */
+    if (transaction.contract->has_parameter) {
+        content->permission_id = transaction.contract->Permission_id;
+        content->contractType = (contractType_e) transaction.contract->type;
+
+        pb_istream_t tx_stream = pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
+        bool ret;
+
+        switch (transaction.contract->type) {
+            case protocol_Transaction_Contract_ContractType_TriggerSmartContract:
+                ret = trigger_smart_contract_v2(content, &tx_stream);
                 break;
             default:
                 return USTREAM_FAULT;

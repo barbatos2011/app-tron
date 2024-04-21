@@ -5,6 +5,11 @@ import hashlib
 from typing import List
 
 
+UINT64_MAX: int = 18446744073709551615
+UINT32_MAX: int = 4294967295
+UINT16_MAX: int = 65535
+
+
 def check_hash_signature(txID, signature, public_key):
     s = Signature(signature_bytes=signature)
     keys = KeyAPI('eth_keys.backends.NativeECCBackend')
@@ -38,3 +43,19 @@ def packed_bip32_path_from_string(path: str) -> bytes:
             len(bip32_paths).to_bytes(1, byteorder="big"),
             *bip32_paths
         ])
+
+
+def write_varint(n: int) -> bytes:
+    if n < 0xFC:
+        return n.to_bytes(1, byteorder="little")
+
+    if n <= UINT16_MAX:
+        return b"\xFD" + n.to_bytes(2, byteorder="little")
+
+    if n <= UINT32_MAX:
+        return b"\xFE" + n.to_bytes(4, byteorder="little")
+
+    if n <= UINT64_MAX:
+        return b"\xFF" + n.to_bytes(8, byteorder="little")
+
+    raise ValueError(f"Can't write to varint: '{n}'!")

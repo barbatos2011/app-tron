@@ -2,6 +2,8 @@
 #include "cx.h"
 #include <stdbool.h>
 #include "core/Contract.pb.h"
+#include "asset_info.h"
+#include "tx_content.h"
 
 #ifndef PARSE_H
 #define PARSE_H
@@ -59,44 +61,44 @@ typedef enum parserStatus_e {
     USTREAM_MISSING_SETTING_DATA_ALLOWED
 } parserStatus_e;
 
-typedef enum contractType_e {
-    ACCOUNTCREATECONTRACT = 0,
-    TRANSFERCONTRACT,
-    TRANSFERASSETCONTRACT,
-    VOTEASSETCONTRACT,
-    VOTEWITNESSCONTRACT,
-    WITNESSCREATECONTRACT,
-    ASSETISSUECONTRACT,
-    WITNESSUPDATECONTRACT = 8,
-    PARTICIPATEASSETISSUECONTRACT,
-    ACCOUNTUPDATECONTRACT,
-    FREEZEBALANCECONTRACT,
-    UNFREEZEBALANCECONTRACT,
-    WITHDRAWBALANCECONTRACT,
-    UNFREEZEASSETCONTRACT,
-    UPDATEASSETCONTRACT,
-    PROPOSALCREATECONTRACT,
-    PROPOSALAPPROVECONTRACT,
-    PROPOSALDELETECONTRACT,
-    SETACCOUNTIDCONTRACT,
-    CUSTOMCONTRACT,
-    CREATESMARTCONTRACT = 30,
-    TRIGGERSMARTCONTRACT,
-    EXCHANGECREATECONTRACT = 41,
-    EXCHANGEINJECTCONTRACT,
-    EXCHANGEWITHDRAWCONTRACT,
-    EXCHANGETRANSACTIONCONTRACT,
-    UPDATEENERGYLIMITCONTRACT,
-    ACCOUNTPERMISSIONUPDATECONTRACT,
-    FREEZEBALANCEV2CONTRACT = 54,
-    UNFREEZEBALANCEV2CONTRACT,
-    WITHDRAWEXPIREUNFREEZECONTRACT,
-    DELEGATERESOURCECONTRACT,
-    UNDELEGATERESOURCECONTRACT,
+// typedef enum contractType_e {
+//     ACCOUNTCREATECONTRACT = 0,
+//     TRANSFERCONTRACT,
+//     TRANSFERASSETCONTRACT,
+//     VOTEASSETCONTRACT,
+//     VOTEWITNESSCONTRACT,
+//     WITNESSCREATECONTRACT,
+//     ASSETISSUECONTRACT,
+//     WITNESSUPDATECONTRACT = 8,
+//     PARTICIPATEASSETISSUECONTRACT,
+//     ACCOUNTUPDATECONTRACT,
+//     FREEZEBALANCECONTRACT,
+//     UNFREEZEBALANCECONTRACT,
+//     WITHDRAWBALANCECONTRACT,
+//     UNFREEZEASSETCONTRACT,
+//     UPDATEASSETCONTRACT,
+//     PROPOSALCREATECONTRACT,
+//     PROPOSALAPPROVECONTRACT,
+//     PROPOSALDELETECONTRACT,
+//     SETACCOUNTIDCONTRACT,
+//     CUSTOMCONTRACT,
+//     CREATESMARTCONTRACT = 30,
+//     TRIGGERSMARTCONTRACT,
+//     EXCHANGECREATECONTRACT = 41,
+//     EXCHANGEINJECTCONTRACT,
+//     EXCHANGEWITHDRAWCONTRACT,
+//     EXCHANGETRANSACTIONCONTRACT,
+//     UPDATEENERGYLIMITCONTRACT,
+//     ACCOUNTPERMISSIONUPDATECONTRACT,
+//     FREEZEBALANCEV2CONTRACT = 54,
+//     UNFREEZEBALANCEV2CONTRACT,
+//     WITHDRAWEXPIREUNFREEZECONTRACT,
+//     DELEGATERESOURCECONTRACT,
+//     UNDELEGATERESOURCECONTRACT,
 
-    UNKNOWN_CONTRACT = 254,
-    INVALID_CONTRACT = 255
-} contractType_e;
+//     UNKNOWN_CONTRACT = 254,
+//     INVALID_CONTRACT = 255
+// } contractType_e;
 
 typedef struct stage_t {
     uint16_t total;
@@ -125,26 +127,28 @@ typedef struct transactionContext_t {
     uint8_t hash[HASH_SIZE];
     uint8_t signature[MAX_RAW_SIGNATURE];
     uint8_t signatureLength;
+    union extraInfo_t extraInfo[MAX_ITEMS];
+    uint8_t tokenSet[MAX_ITEMS];
 } transactionContext_t;
 
-typedef struct txContent_t {
-    uint64_t amount[2];
-    uint64_t exchangeID;
-    uint8_t account[ADDRESS_SIZE];
-    uint8_t destination[ADDRESS_SIZE];
-    uint8_t contractAddress[ADDRESS_SIZE];
-    uint8_t TRC20Amount[32];
-    uint8_t decimals[2];
-    char tokenNames[2][MAX_TOKEN_LENGTH];
-    uint8_t tokenNamesLength[2];
-    uint8_t resource;
-    uint8_t TRC20Method;
-    uint32_t customSelector;
-    contractType_e contractType;
-    uint64_t dataBytes;
-    uint8_t permission_id;
-    uint32_t customData;
-} txContent_t;
+// typedef struct txContent_t {
+//     uint64_t amount[2];
+//     uint64_t exchangeID;
+//     uint8_t account[ADDRESS_SIZE];
+//     uint8_t destination[ADDRESS_SIZE];
+//     uint8_t contractAddress[ADDRESS_SIZE];
+//     uint8_t TRC20Amount[32];
+//     uint8_t decimals[2];
+//     char tokenNames[2][MAX_TOKEN_LENGTH];
+//     uint8_t tokenNamesLength[2];
+//     uint8_t resource;
+//     uint8_t TRC20Method;
+//     uint32_t customSelector;
+//     contractType_e contractType;
+//     uint64_t dataBytes;
+//     uint8_t permission_id;
+//     uint32_t customData;
+// } txContent_t;
 
 typedef struct tokenContext_t {
     char pluginName[PLUGIN_ID_LENGTH];
@@ -196,5 +200,6 @@ parserStatus_e processTx(uint8_t *buffer, uint32_t length, txContent_t *content)
 
 extern txContent_t txContent;
 extern txContext_t txContext;
+extern dataContext_t dataContext;
 
 #endif

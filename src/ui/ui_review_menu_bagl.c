@@ -24,6 +24,7 @@
 #include "os_io_seproxyhal.h"
 #include "ui_globals.h"
 #include "ui_review_menu.h"
+#include "tron_plugin_handler.h"
 
 //////////////////////////////////////////////////////////////////////
 UX_STEP_NOCB(ux_approval_tx_data_warning_step,
@@ -145,6 +146,48 @@ UX_DEF(ux_approval_tx_data_warning_flow,
        &ux_approval_tx_3_step,
        &ux_approval_from_address_step,
        &ux_approval_tx_4_step,
+       &ux_approval_confirm_step,
+       &ux_approval_reject_step);
+
+UX_STEP_NOCB_INIT(
+  ux_plugin_approval_id_step,
+  bnnn_paging,
+  plugin_ui_get_id(),
+  {
+    .title = addressSummary,
+    .text = fullContract
+  });
+
+UX_STEP_INIT(
+  ux_plugin_approval_before_step,
+  NULL,
+  NULL,
+  {
+    display_next_plugin_item(true);
+  });
+
+UX_FLOW_DEF_NOCB(
+  ux_plugin_approval_display_step,
+  bnnn_paging,
+  {
+    .title = addressSummary,
+    .text = fullContract
+  });
+
+UX_STEP_INIT(
+  ux_plugin_approval_after_step,
+  NULL,
+  NULL,
+  {
+    display_next_plugin_item(false);
+  });
+
+UX_DEF(ux_approval_clear_sign_tx_flow,
+       &ux_approval_tx_1_step,
+       &ux_plugin_approval_id_step,
+       &ux_plugin_approval_before_step,
+       &ux_plugin_approval_display_step,
+       &ux_plugin_approval_after_step,
        &ux_approval_confirm_step,
        &ux_approval_reject_step);
 
@@ -968,6 +1011,9 @@ void ux_flow_display(ui_approval_state_t state, bool data_warning) {
                 ((data_warning == true) ? ux_approval_withdraw_expire_unfreeze_data_warning_flow
                                         : ux_approval_withdraw_expire_unfreeze_flow),
                 NULL);
+            break;
+        case APPROVAL_CLEAR_SIGN_TRANSFER:
+            ux_flow_init(0,ux_approval_clear_sign_tx_flow,NULL);
             break;
         default:
             PRINTF("This should not happen !\n");

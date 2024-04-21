@@ -22,6 +22,7 @@
 #include "crypto_helpers.h"
 #include "ui_idle_menu.h"
 #include "app_errors.h"
+#include "plugin_interface.h"
 
 volatile uint8_t customContractField;
 char fromAddress[BASE58CHECK_ADDRESS_SIZE + 1 + 5];  // 5 extra bytes used to inform MultSign ID
@@ -145,5 +146,48 @@ end:
         return true;
     } else {
         return false;
+    }
+}
+
+// This function is not exported by the SDK
+void ux_layout_paging_redisplay_by_addr(unsigned int stack_slot);
+
+void display_next_plugin_item(bool entering) {
+    if (entering) {
+        if (dataContext.tokenContext.pluginUiState == PLUGIN_UI_OUTSIDE) {
+            dataContext.tokenContext.pluginUiState = PLUGIN_UI_INSIDE;
+            dataContext.tokenContext.pluginUiCurrentItem = 0;
+            plugin_ui_get_item();
+            ux_flow_next();
+        } else {
+            if (dataContext.tokenContext.pluginUiCurrentItem > 0) {
+                dataContext.tokenContext.pluginUiCurrentItem--;
+                plugin_ui_get_item();
+                ux_flow_next();
+            } else {
+                dataContext.tokenContext.pluginUiState = PLUGIN_UI_OUTSIDE;
+                dataContext.tokenContext.pluginUiCurrentItem = 0;
+                ux_flow_prev();
+            }
+        }
+    } else {
+        if (dataContext.tokenContext.pluginUiState == PLUGIN_UI_OUTSIDE) {
+            dataContext.tokenContext.pluginUiState = PLUGIN_UI_INSIDE;
+            plugin_ui_get_item();
+            ux_flow_prev();
+        } else {
+            if (dataContext.tokenContext.pluginUiCurrentItem <
+                dataContext.tokenContext.pluginUiMaxItems - 1) {
+                dataContext.tokenContext.pluginUiCurrentItem++;
+                plugin_ui_get_item();
+                ux_flow_prev();
+                // Reset multi page layout to the first page
+                G_ux.layout_paging.current = 0;
+                ux_layout_paging_redisplay_by_addr(G_ux.stack_count - 1);
+            } else {
+                dataContext.tokenContext.pluginUiState = PLUGIN_UI_OUTSIDE;
+                ux_flow_next();
+            }
+        }
     }
 }

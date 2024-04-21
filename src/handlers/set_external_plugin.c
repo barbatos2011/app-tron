@@ -17,46 +17,44 @@
 #include <string.h>
 #include <stdint.h>
 
+#include "io.h"
 #include "parse.h"
 #include "os_io_seproxyhal.h"
+#include "public_keys.h"
+#include "app_errors.h"
+#include "plugin_interface.h"
 
-void handleSetExternalPlugin(uint8_t p1,
-                             uint8_t p2,
-                             const uint8_t *workBuffer,
-                             uint8_t dataLength,
-                             unsigned int *flags,
-                             unsigned int *tx) {
+
+int handleSetExternalPlugin(uint8_t p1, uint8_t p2, const uint8_t *workBuffer, uint16_t dataLength) {
     UNUSED(p1);
     UNUSED(p2);
-    UNUSED(flags);
     PRINTF("Handling set Plugin\n");
     uint8_t hash[HASH_SIZE];
     cx_ecfp_public_key_t tokenKey;
     uint8_t pluginNameLength = *workBuffer;
     PRINTF("plugin Name Length: %d\n", pluginNameLength);
-    const size_t payload_size = 1 + pluginNameLength + ADDRESS_SIZE + SELECTOR_SIZE;
+    // const size_t payload_size = 1 + pluginNameLength + ADDRESS_SIZE + SELECTOR_SIZE;
+    const size_t payload_size = 1 + pluginNameLength + 20 + SELECTOR_SIZE;
 
     if (dataLength <= payload_size) {
         PRINTF("data too small: expected at least %d got %d\n", payload_size, dataLength);
-        THROW(0x6A80);
+        return io_send_sw(E_INCORRECT_LENGTH);
     }
 
     if (pluginNameLength + 1 > sizeof(dataContext.tokenContext.pluginName)) {
         PRINTF("name length too big: expected max %d, got %d\n",
                sizeof(dataContext.tokenContext.pluginName),
                pluginNameLength + 1);
-        THROW(0x6A80);
+        return io_send_sw(E_INCORRECT_LENGTH);
     }
 
     // check Ledger's signature over the payload
     cx_hash_sha256(workBuffer, payload_size, hash, sizeof(hash));
-    cx_ecfp_init_public_key(CX_CURVE_256K1,
+    CX_ASSERT(cx_ecfp_init_public_key_no_throw(CX_CURVE_256K1,
                             LEDGER_SIGNATURE_PUBLIC_KEY,
                             sizeof(LEDGER_SIGNATURE_PUBLIC_KEY),
-                            &tokenKey);
-    if (!cx_ecdsa_verify(&tokenKey,
-                         CX_LAST,
-                         CX_SHA256,
+                            &tokenKey));
+    if (!cx_ecdsa_verify_no_throw(&tokenKey,
                          hash,
                          sizeof(hash),
                          workBuffer + payload_size,
@@ -65,7 +63,7 @@ void handleSetExternalPlugin(uint8_t p1,
         PRINTF("Invalid plugin signature %.*H\n",
                dataLength - payload_size,
                workBuffer + payload_size);
-        THROW(0x6A80);
+        return io_send_sw(E_INCORRECT_DATA);
 #endif
     }
 
@@ -77,34 +75,36 @@ void handleSetExternalPlugin(uint8_t p1,
 
     PRINTF("Check external plugin %s\n", dataContext.tokenContext.pluginName);
 
-    // Check if the plugin is present on the device
-    uint32_t params[2];
-    params[0] = (uint32_t) dataContext.tokenContext.pluginName;
-    params[1] = ETH_PLUGIN_CHECK_PRESENCE;
-    BEGIN_TRY {
-        TRY {
-            os_lib_call(params);
-        }
-        CATCH_OTHER(e) {
-            PRINTF("%s external plugin is not present\n", dataContext.tokenContext.pluginName);
-            memset(dataContext.tokenContext.pluginName,
-                   0,
-                   sizeof(dataContext.tokenContext.pluginName));
-            THROW(0x6984);
-        }
-        FINALLY {
-        }
+    // // Check if the plugin is present on the device
+    // uint32_t params[2];
+    // params[0] = (uint32_t) dataContext.tokenContext.pluginName;
+    // params[1] = TRON_PLUGIN_CHECK_PRESENCE;
+    // BEGIN_TRY {
+    //     TRY {
+    //         os_lib_call(params);
+    //     }
+    //     CATCH_OTHER(e) {
+    //         PRINTF("%s external plugin is not present\n", dataContext.tokenContext.pluginName);
+    //         memset(dataContext.tokenContext.pluginName,
+    //               0,
+    //               sizeof(dataContext.tokenContext.pluginName));
+    //         return io_send_sw(E_PLUGIN_NOT_FOUND);
+    //     }
+    //     FINALLY {
+    //     }
+    // }
+    // END_TRY;
+    if (memcmp(dataContext.tokenContext.pluginName, "PluginBoilerplate", pluginNameLength) != 0 ) {
+        return io_send_sw(E_PLUGIN_NOT_FOUND);
     }
-    END_TRY;
 
     PRINTF("Plugin found\n");
 
-    memmove(dataContext.tokenContext.contractAddress, workBuffer, ADDRESS_LENGTH);
-    workBuffer += ADDRESS_LENGTH;
+    // memmove(dataContext.tokenContext.contractAddress, workBuffer, ADDRESS_SIZE);
+    // workBuffer += ADDRESS_SIZE;
+    memmove(dataContext.tokenContext.contractAddress, workBuffer, 20);
+    workBuffer += 20;
     memmove(dataContext.tokenContext.methodSelector, workBuffer, SELECTOR_SIZE);
 
-    pluginType = EXTERNAL;
-
-    G_io_apdu_buffer[(*tx)++] = 0x90;
-    G_io_apdu_buffer[(*tx)++] = 0x00;
+    return io_send_sw(E_OK);
 }
