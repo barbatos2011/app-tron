@@ -155,7 +155,7 @@ UX_STEP_NOCB_INIT(
   plugin_ui_get_id(),
   {
     .title = addressSummary,
-    .text = fullContract
+    .text = fullContract,
   });
 
 UX_STEP_INIT(
@@ -171,7 +171,7 @@ UX_FLOW_DEF_NOCB(
   bnnn_paging,
   {
     .title = addressSummary,
-    .text = fullContract
+    .text = fullContract,
   });
 
 UX_STEP_INIT(
@@ -1013,7 +1013,7 @@ void ux_flow_display(ui_approval_state_t state, bool data_warning) {
                 NULL);
             break;
         case APPROVAL_CLEAR_SIGN_TRANSFER:
-            ux_flow_init(0,ux_approval_clear_sign_tx_flow,NULL);
+            ux_flow_init(0, ux_approval_clear_sign_tx_flow, NULL);
             break;
         default:
             PRINTF("This should not happen !\n");

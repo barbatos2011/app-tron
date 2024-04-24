@@ -65,6 +65,7 @@ class InsType(IntEnum):
     SIGN_PERSONAL_MESSAGE = 0x08
     GET_ECDH_SECRET = 0x0A
     EXTERNAL_PLUGIN_SETUP     = 0x12
+    CLEAR_SIGN =           0xC4
 
 class Errors(IntEnum):
     OK = 0x9000
@@ -355,6 +356,67 @@ class TronClient:
                                         data=apdu[5:])
         except ApduException as error:
             raise DeviceException(error_code=error.sw, ins=InsType.INS_SIGN_TX)
+
+    def clear_sign(self,
+             path: str,
+             tx,
+             signatures=[],
+             snappath: Path = None,
+             text: str = "",
+             navigate: bool = True):
+        messages = []
+
+        # Split transaction in multiples APDU
+        data = pack_derivation_path(path)
+        while len(tx) > 0:
+            # get next message field
+            newpos = self.get_next_length(tx)
+            assert (newpos < MAX_APDU_LEN)
+            if (len(data) + newpos) < MAX_APDU_LEN:
+                # append to data
+                data += tx[:newpos]
+                tx = tx[newpos:]
+            else:
+                # add chunk
+                messages.append(data)
+                data = bytearray()
+                continue
+        # append last
+        messages.append(data)
+        token_pos = len(messages)
+
+        for signature in signatures:
+            messages.append(bytearray.fromhex(signature))
+
+        # Send all the messages expect the last
+        for i, data in enumerate(messages[:-1]):
+            if i == 0:
+                p1 = P1.FIRST
+            else:
+                if i < token_pos:
+                    p1 = P1.MORE
+                else:
+                    p1 = P1.TRC10_NAME | P1.FIRST | i - token_pos
+
+            self._client.exchange(CLA, InsType.CLEAR_SIGN, p1, 0x00, data)
+
+        # Send last message
+        if len(messages) == 1:
+            p1 = P1.SIGN
+        elif signatures:
+            p1 = P1.TRC10_NAME | InsType.SIGN_PERSONAL_MESSAGE | len(
+                signatures) - 1
+        else:
+            p1 = P1.LAST
+
+        if navigate:
+            with self._client.exchange_async(CLA, InsType.CLEAR_SIGN, p1, 0x00,
+                                             messages[-1]):
+                self.navigate(snappath, text)
+            return self._client.last_async_response
+        else:
+            return self._client.exchange(CLA, InsType.CLEAR_SIGN, p1, 0x00,
+                                         messages[-1])
 
 class DeviceException(Exception):  # pylint: disable=too-few-public-methods
     exc: Dict[int, Any] = {

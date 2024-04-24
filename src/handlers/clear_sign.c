@@ -67,7 +67,7 @@ void reportFinalizeError(bool direct) {
 }
 
 
-__attribute__((noinline)) static bool finalize_parsing_helper(bool direct, bool *use_standard_UI) {
+__attribute__((noinline)) static uint16_t finalize_parsing_helper(bool direct, bool *use_standard_UI) {
     char displayBuffer[50];
     uint8_t decimals = WEI_TO_ETHER;
     // uint64_t chain_id = get_tx_chain_id();
@@ -93,7 +93,7 @@ __attribute__((noinline)) static bool finalize_parsing_helper(bool direct, bool 
             PRINTF("Plugin finalize call failed\n");
             reportFinalizeError(direct);
             if (!direct) {
-                return false;
+                return 7;
             }
         }
         // Lookup tokens if requested
@@ -119,7 +119,7 @@ __attribute__((noinline)) static bool finalize_parsing_helper(bool direct, bool 
                 PRINTF("Plugin provide token call failed\n");
                 reportFinalizeError(direct);
                 if (!direct) {
-                    return false;
+                    return 8;
                 }
             }
             pluginFinalize.result = pluginProvideInfo.result;
@@ -158,7 +158,7 @@ __attribute__((noinline)) static bool finalize_parsing_helper(bool direct, bool 
                     PRINTF("ui type %d not supported\n", pluginFinalize.uiType);
                     reportFinalizeError(direct);
                     if (!direct) {
-                        return false;
+                        return 9;
                     }
             }
         }
@@ -264,18 +264,18 @@ __attribute__((noinline)) static bool finalize_parsing_helper(bool direct, bool 
     // // Prepare network field
     // get_network_as_string(strings.common.network_name, sizeof(strings.common.network_name));
     // PRINTF("Network: %s\n", strings.common.network_name);
-    return true;
+    return 0;
 end:
-    return false;
+    return 10;
 }
 
 
-void finalizeParsing(bool direct, bool data_warning) {
+uint16_t finalizeParsing(bool direct) {
     bool use_standard_UI = true;
     // bool no_consent_check;
-
-    if (!finalize_parsing_helper(direct, &use_standard_UI)) {
-        return;
+    uint16_t txResult = finalize_parsing_helper(direct, &use_standard_UI);
+    if (txResult != 0) {
+        return txResult;
     }
     // // If called from swap, the user has already validated a standard transaction
     // // And we have already checked the fields of this transaction above
@@ -294,15 +294,12 @@ void finalizeParsing(bool direct, bool data_warning) {
             dataContext.tokenContext.pluginUiState = PLUGIN_UI_OUTSIDE;
             dataContext.tokenContext.pluginUiCurrentItem = 0;
             // ux_approve_tx(true);
-            ux_flow_display(APPROVAL_CLEAR_SIGN_TRANSFER, data_warning);
+            ux_flow_display(APPROVAL_CLEAR_SIGN_TRANSFER, false);
         // }
     // }
 }
 
 int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLength) {
-    uint256_t uint256;
-    bool data_warning;
-
     if (p2 != 0x00) {
         return io_send_sw(E_INCORRECT_P1_P2);
     }
@@ -350,6 +347,7 @@ int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLe
 
     // process buffer
     uint16_t txResult = processTxForClearSign(workBuffer, dataLength, &txContent);
+
     PRINTF("txResult: %04x\n", txResult);
     switch (txResult) {
         case USTREAM_PROCESSING:
@@ -391,8 +389,6 @@ int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLe
         getBase58FromAddress(txContent.account, fromAddress, HAS_SETTING(S_TRUNCATE_ADDRESS));
     }
 
-    data_warning = ((txContent.dataBytes > 0) ? true : false);
-
 #ifdef HAVE_SWAP
     if (G_called_from_swap) {
         if ((txContent.contractType != TRANSFERCONTRACT) &&      // TRX Transfer
@@ -409,14 +405,14 @@ int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLe
             }
         }
 
-        if (data_warning) {
-            PRINTF("Refused data warning when in SWAP mode\n");
-            return io_send_sw(E_SWAP_CHECKING_FAIL);
-        }
     }
 #endif  // HAVE_SWAP
 
-    finalizeParsing(false, data_warning);
+    txResult = finalizeParsing(false);
+    if (txResult != 0)
+    {
+        return io_send_sw(txResult);
+    }
     return 0;
 }
 

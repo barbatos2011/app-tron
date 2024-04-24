@@ -52,6 +52,32 @@ class TestTRX():
         assert check_tx_signature(tx, resp.data[0:65],
                                   client.getAccount(0)['publicKey'][2:])
 
+    def clear_sign_and_validate(self,
+                          client,
+                          firmware,
+                          text_index,
+                          tx,
+                          signatures=[]):
+        path = Path(currentframe().f_back.f_code.co_name)
+        text = None
+        if firmware.device.startswith("nano"):
+            if text_index == 0:
+                text = "Sign"
+            elif text_index == 1:
+                text = "Accept"
+        else:
+            if text_index == 0 or text_index == 1:
+                text = "Hold to sign"
+        assert text
+        resp = client.clear_sign(client.getAccount(0)['path'],
+                           tx,
+                           signatures=signatures,
+                           snappath=path,
+                           text=text,
+                           navigate=False)
+        assert check_tx_signature(tx, resp.data[0:65],
+                                  client.getAccount(0)['publicKey'][2:])
+
     def test_trx_get_version(self, backend, firmware, navigator):
         client = TronClient(backend, firmware, navigator)
         resp = client.getVersion()
@@ -655,19 +681,19 @@ class TestTRX():
         self.sign_and_validate(client, firmware, 0, tx)
 
     def test_trx_set_external_plugin(self, backend, firmware, navigator):
-        client = TronClient(backend, firmware, navigator)
         builder = TronCommandBuilder(True)
 
         apdu = builder.set_external_plugin("PluginBoilerplate",
-                    bytes.fromhex('000102030405060708090a0b0c0d0e0f10111213'),
-                    bytes.fromhex('7ff36ab5'),
-                    bytes.fromhex('3046022100a106665eaadcd91b2ded9bdb9b797c349962878dc2d3c223b954826fd8e2095702210080062e05f6d58539939f8432bdae220444b74e138ffa2642d8f23d39093680aa'))
-
-        hash_to_sign = bytes.fromhex("000102030405060708090a0b0c0d0e0f"
-                                     "101112131415161718191a1b1c1d1e1f")
-        data = pack_derivation_path(client.getAccount(0)['path'])
-        data += hash_to_sign
+                    bytes.fromhex('410e1bce983f78f8913002c3f7e52daf78de6da2cb'),
+                    bytes.fromhex('a9059cbb'),
+                    bytes.fromhex('3045022100c6ed1e65f3c1a58fff2348c90e5945ae419e946f71142be6a5210333dd1d8ea7022010cdcf93e2895087194961c360ef24847c5c2c4c1956b02ece931fa4aed174ec'))
 
         resp = backend.exchange(apdu[0], apdu[1], apdu[2], apdu[3], apdu[5:])
         print(resp.data.hex())
         # pytest ./tests/ -k "set_external_plugin" --tb=short -v --device nanosp --log_apdu_file tests/test.log
+
+    def test_trx_clear_sign(self, backend, firmware, navigator):
+        client = TronClient(backend, firmware, navigator)
+        tx = bytes.fromhex('0a02d20b220892915c91841dd16f40d097fec5f0315aae01081f12a9010a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412740a15410dfba2397e8746cddd023d7670d8e0cdc1d497b81215410e1bce983f78f8913002c3f7e52daf78de6da2cb2244a9059cbb000000000000000000000000573708726db88a32c1b9c828fef508577cfb8483000000000000000000000000000000000000000000000000000000000000000a70dac5fac5f031900180ade204')
+        self.clear_sign_and_validate(client, firmware, 0, tx)
+        # pytest ./tests/ -k "clear_sign" --tb=short -v --device nanosp --log_apdu_file tests/test.log

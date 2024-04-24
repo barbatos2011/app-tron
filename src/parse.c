@@ -909,7 +909,7 @@ bool process_trigger_smart_contract_data_v2(pb_istream_t *stream, txContent_t *c
     }
     content->customSelector = U4BE(buf, 0);
     // check is plugin call or not
-    if (memcmp(content->contractAddress, dataContext.tokenContext.contractAddress, ADDRESS_SIZE) != 0 || memcmp(content->customSelector, dataContext.tokenContext.methodSelector, SELECTOR_SIZE) != 0) {
+    if (memcmp(content->contractAddress, dataContext.tokenContext.contractAddress, ADDRESS_SIZE) != 0 || memcmp(buf, dataContext.tokenContext.methodSelector, SELECTOR_SIZE) != 0) {
         return false;
     }
 
@@ -1045,7 +1045,7 @@ parserStatus_e processTxForClearSign(uint8_t *buffer, uint32_t length, txContent
             default:
                 return USTREAM_FAULT;
         }
-        return ret ? USTREAM_PROCESSING : USTREAM_FAULT;
+        return ret ? USTREAM_PROCESSING : 4;
     }
 
     return USTREAM_PROCESSING;

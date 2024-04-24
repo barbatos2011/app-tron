@@ -33,8 +33,8 @@ int handleSetExternalPlugin(uint8_t p1, uint8_t p2, const uint8_t *workBuffer, u
     cx_ecfp_public_key_t tokenKey;
     uint8_t pluginNameLength = *workBuffer;
     PRINTF("plugin Name Length: %d\n", pluginNameLength);
-    // const size_t payload_size = 1 + pluginNameLength + ADDRESS_SIZE + SELECTOR_SIZE;
-    const size_t payload_size = 1 + pluginNameLength + 20 + SELECTOR_SIZE;
+    const size_t payload_size = 1 + pluginNameLength + ADDRESS_SIZE + SELECTOR_SIZE;
+    // const size_t payload_size = 1 + pluginNameLength + 20 + SELECTOR_SIZE;
 
     if (dataLength <= payload_size) {
         PRINTF("data too small: expected at least %d got %d\n", payload_size, dataLength);
@@ -59,12 +59,12 @@ int handleSetExternalPlugin(uint8_t p1, uint8_t p2, const uint8_t *workBuffer, u
                          sizeof(hash),
                          workBuffer + payload_size,
                          dataLength - payload_size)) {
-#ifndef HAVE_BYPASS_SIGNATURES
+// #ifndef HAVE_BYPASS_SIGNATURES
         PRINTF("Invalid plugin signature %.*H\n",
                dataLength - payload_size,
                workBuffer + payload_size);
         return io_send_sw(E_INCORRECT_DATA);
-#endif
+// #endif
     }
 
     // move on to the rest of the payload parsing
@@ -75,35 +75,35 @@ int handleSetExternalPlugin(uint8_t p1, uint8_t p2, const uint8_t *workBuffer, u
 
     PRINTF("Check external plugin %s\n", dataContext.tokenContext.pluginName);
 
-    // // Check if the plugin is present on the device
-    // uint32_t params[2];
-    // params[0] = (uint32_t) dataContext.tokenContext.pluginName;
-    // params[1] = TRON_PLUGIN_CHECK_PRESENCE;
-    // BEGIN_TRY {
-    //     TRY {
-    //         os_lib_call(params);
-    //     }
-    //     CATCH_OTHER(e) {
-    //         PRINTF("%s external plugin is not present\n", dataContext.tokenContext.pluginName);
-    //         memset(dataContext.tokenContext.pluginName,
-    //               0,
-    //               sizeof(dataContext.tokenContext.pluginName));
-    //         return io_send_sw(E_PLUGIN_NOT_FOUND);
-    //     }
-    //     FINALLY {
-    //     }
-    // }
-    // END_TRY;
-    if (memcmp(dataContext.tokenContext.pluginName, "PluginBoilerplate", pluginNameLength) != 0 ) {
-        return io_send_sw(E_PLUGIN_NOT_FOUND);
+    // Check if the plugin is present on the device
+    uint32_t params[2];
+    params[0] = (uint32_t) dataContext.tokenContext.pluginName;
+    params[1] = TRON_PLUGIN_CHECK_PRESENCE;
+    BEGIN_TRY {
+        TRY {
+            os_lib_call(params);
+        }
+        CATCH_OTHER(e) {
+            PRINTF("%s external plugin is not present\n", dataContext.tokenContext.pluginName);
+            memset(dataContext.tokenContext.pluginName,
+                  0,
+                  sizeof(dataContext.tokenContext.pluginName));
+            return io_send_sw(E_PLUGIN_NOT_FOUND);
+        }
+        FINALLY {
+        }
     }
+    END_TRY;
+    // if (memcmp(dataContext.tokenContext.pluginName, "PluginBoilerplate", pluginNameLength) != 0 ) {
+    //     return io_send_sw(E_PLUGIN_NOT_FOUND);
+    // }
 
     PRINTF("Plugin found\n");
 
-    // memmove(dataContext.tokenContext.contractAddress, workBuffer, ADDRESS_SIZE);
-    // workBuffer += ADDRESS_SIZE;
-    memmove(dataContext.tokenContext.contractAddress, workBuffer, 20);
-    workBuffer += 20;
+    memmove(dataContext.tokenContext.contractAddress, workBuffer, ADDRESS_SIZE);
+    workBuffer += ADDRESS_SIZE;
+    // memmove(dataContext.tokenContext.contractAddress, workBuffer, 20);
+    // workBuffer += 20;
     memmove(dataContext.tokenContext.methodSelector, workBuffer, SELECTOR_SIZE);
 
     return io_send_sw(E_OK);

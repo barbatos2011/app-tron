@@ -1,0 +1,92 @@
+[
+    {
+        "name": "deposit",
+        "stateMutability": "Payable",
+        "type": "Function"
+    },
+    {
+        "outputs": [
+            {
+                "name": "amount0",
+                "type": "int256"
+            },
+            {
+                "name": "amount1",
+                "type": "int256"
+            }
+        ],
+        "inputs": [
+            {
+                "name": "recipient",
+                "type": "address"
+            },
+            {
+                "name": "zeroForOne",
+                "type": "bool"
+            },
+            {
+                "name": "amountSpecified",
+                "type": "int256"
+            },
+            {
+                "name": "sqrtPriceLimitX96",
+                "type": "uint160"
+            },
+            {
+                "name": "data",
+                "type": "bytes"
+            }
+        ],
+        "name": "swap",
+        "stateMutability": "Pure",
+        "type": "Function"
+    },
+    {
+        "outputs": [
+            {
+                "name": "amounts",
+                "type": "uint256[]"
+            }
+        ],
+        "inputs": [
+            {
+                "name": "amountIn",
+                "type": "uint256"
+            },
+            {
+                "name": "amountOutMin",
+                "type": "uint256"
+            },
+            {
+                "name": "path",
+                "type": "address[]"
+            },
+            {
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "name": "deadline",
+                "type": "uint256"
+            }
+        ],
+        "name": "swapExactTokensForTokens",
+        "stateMutability": "Pure",
+        "type": "Function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "transfer",
+        "stateMutability": "Pure",
+        "type": "Function"
+    }
+]
