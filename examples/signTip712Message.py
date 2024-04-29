@@ -33,11 +33,11 @@ if args.messageHash == None:
 # get pubKey
 donglePathStr = parse_bip32_path(args.path)
 dongle = getDongle(True)
-result = dongle.exchange(apduMessage(0x02,0x00,0x00,donglePathStr, ""))
-size=result[0]
+result = dongle.exchange(apduMessage(0x02, 0x00, 0x00, donglePathStr, ""))
+size = result[0]
 pubKey = ""
-if size == 65 :
-	pubKey = result[1:1+size].hex()
+if size == 65:
+    pubKey = result[1:1 + size].hex()
 else:
     print("Error... Public Key Size: {:d}".format(size))
     sys.exit(0)
