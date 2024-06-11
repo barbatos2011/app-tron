@@ -503,6 +503,12 @@ int handleSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLength)
             ux_flow_display(APPROVAL_UNDELEGATE_RESOURCE_TRANSACTION, data_warning);
 
             break;
+       case CANCELALLUNFREEZEV2CONTRACT:  // Cancel All Unfreeze Resource
+            getBase58FromAddress(txContent.account, toAddress, HAS_SETTING(S_TRUNCATE_ADDRESS));
+
+            ux_flow_display(APPROVAL_CANCELALLUNFREEZEV2_TRANSACTION, data_warning);
+
+            break;
         case WITHDRAWEXPIREUNFREEZECONTRACT:  // Withdraw Expire Unfreeze
             getBase58FromAddress(txContent.account, toAddress, HAS_SETTING(S_TRUNCATE_ADDRESS));
 
