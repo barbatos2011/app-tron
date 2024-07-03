@@ -26,6 +26,7 @@
 #include "ui_globals.h"
 #include "ui_review_menu.h"
 #include "ui_idle_menu.h"
+#include "ui_plugin.h"
 
 // Macros
 #define WARNING_TYPES_NUMBER 2
@@ -189,12 +190,12 @@ static uint8_t setTagValuePairs(void) {
         // for the next dataContext.tokenContext.pluginUiMaxItems items, get tag/value from
         // plugin_ui_get_item_internal()
         dataContext.tokenContext.pluginUiCurrentItem = pairIndex;
-        plugin_ui_get_item_internal((uint8_t *) title_buffer[counter],
+        plugin_ui_get_item_internal(title_buffer[counter],
                                     TAG_MAX_LEN,
-                                    (uint8_t *) msg_buffer[counter],
+                                    msg_buffer[counter],
                                     VALUE_MAX_LEN);
-        txInfos.fields[nbPairs].item = title_buffer[counter];
-        txInfos.fields[nbPairs].value = msg_buffer[counter];
+        txInfos.fields[nbPairs+1].item = title_buffer[counter];
+        txInfos.fields[nbPairs+1].value = msg_buffer[counter];
         nbPairs++;
         LEDGER_ASSERT((++counter < MAX_PLUGIN_ITEMS), "Too many items for plugin\n");
     }

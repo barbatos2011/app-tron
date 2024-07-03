@@ -1084,6 +1084,7 @@ void ux_flow_display(ui_approval_state_t state, bool data_warning) {
                          ((data_warning == true) ? ux_approval_clear_sign_tx_data_warning_flow
                                                  : ux_approval_clear_sign_tx_flow),
                          NULL);
+            break;
         case APPROVAL_SIGN_TIP72_TRANSACTION:
             ux_flow_init(0, ux_sign_712_v0_flow, NULL);
             break;

@@ -24,6 +24,11 @@
 
 #define NO_NFT_METADATA (NO_EXTRA_INFO(transactionContext, 1))
 
+void plugin_ui_get_item_internal(char *title_buffer,
+                                 size_t title_buffer_size,
+                                 char *msg_buffer,
+                                 size_t msg_buffer_size);
+
 void plugin_ui_get_id(void);
 void plugin_ui_get_item(void);
 
@@ -33,3 +38,7 @@ void tron_plugin_prepare_query_contract_UI(tronQueryContractUI_t *queryContractU
                                            uint32_t titleLength,
                                            char *msg,
                                            uint32_t msgLength);
+
+#ifdef HAVE_BAGL
+void display_next_plugin_item(bool entering);
+#endif

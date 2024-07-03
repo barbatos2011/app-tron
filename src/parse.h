@@ -66,6 +66,15 @@ typedef enum parserStatus_e {
     USTREAM_MISSING_SETTING_DATA_ALLOWED
 } parserStatus_e;
 
+typedef enum parserDataLevel_e {
+    T_INIT, // T_CUSTOME_DATA
+    T_RAW,
+    T_RAW_CONTRACT,
+    T_RAW_CONTRACT_PARAMETER,
+    T_RAW_CONTRACT_PARAMETER_VALUE,
+    T_RAW_CONTRACT_PARAMETER_VALUE_L1,
+} parserDataLevel_e;
+
 // typedef enum contractType_e {
 //     ACCOUNTCREATECONTRACT = 0,
 //     TRANSFERCONTRACT,
@@ -227,11 +236,8 @@ bool adjustDecimals(const char *src,
 void initTx(txContext_t *context, txContent_t *content);
 
 parserStatus_e processTx(uint8_t *buffer, uint32_t length, txContent_t *content);
-parserStatus_e processTxForClearSign(uint8_t *buffer, uint32_t length, txContent_t *content);
-uint32_t processTxForCSMultiParts(uint8_t *buffer,
-                                  uint32_t length,
-                                  txContent_t *content,
-                                  uint8_t state);
+parserStatus_e processCSTx(uint8_t *buffer, uint32_t length, txContent_t *content);
+uint32_t processCSTxV2(uint8_t *buffer, uint32_t length, txContent_t *content, uint8_t state);
 
 extern txContent_t txContent;
 extern txContext_t txContext;

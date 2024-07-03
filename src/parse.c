@@ -892,41 +892,21 @@ parserStatus_e processTx(uint8_t *buffer, uint32_t length, txContent_t *content)
     return USTREAM_PROCESSING;
 }
 
-bool process_trigger_smart_contract_data_v2(pb_istream_t *stream, txContent_t *content) {
-    // If handling the beginning of the data field, assume that the function selector is
-    // present
-    if (stream->bytes_left < SELECTOR_SIZE) {
-        PRINTF("Missing function selector\n");
-        return false;
-    }
+#if defined(PLUGIN_TEST_LOCAL)
+uint8_t process_trigger_smart_contract_data(pb_istream_t *stream, txContent_t *content, bool init) {
+    if (init) {
+        // If handling the beginning of the data field, assume that the function selector is
+        // present
+        if (stream->bytes_left < SELECTOR_SIZE) {
+            PRINTF("Missing function selector\n");
+            return 1;
+        }
 
-    uint8_t buf[32];  // a single encoded TVM value
-    // method selector
-    if (!pb_read(stream, buf, 4)) {
-        return false;
-    }
-    // content->customSelector = U4BE(buf, 0);
-    // check is plugin call or not
-    if (memcmp(content->contractAddress, dataContext.tokenContext.contractAddress, ADDRESS_SIZE) !=
-            0 ||
-        memcmp(buf, dataContext.tokenContext.methodSelector, SELECTOR_SIZE) != 0) {
-        return false;
-    }
-
-    tronPluginInitContract_t pluginInit;
-    dataContext.tokenContext.pluginStatus = TRON_PLUGIN_RESULT_UNAVAILABLE;
-    // // If contract debugging mode is activated, do not go through the plugin activation
-    // // as they wouldn't be displayed if the plugin consumes all data but fallbacks
-    // if (!N_storage.contractDetails) {
-    tron_plugin_prepare_init(&pluginInit, buf, SELECTOR_SIZE);
-    dataContext.tokenContext.pluginStatus =
-        tron_plugin_perform_init(content->contractAddress, &pluginInit);
-    // }
-    PRINTF("pluginstatus %d\n", dataContext.tokenContext.pluginStatus);
-    if (dataContext.tokenContext.pluginStatus == TRON_PLUGIN_RESULT_ERROR) {
-        PRINTF("Plugin error\n");
-        return false;
-    } else if (dataContext.tokenContext.pluginStatus >= TRON_PLUGIN_RESULT_SUCCESSFUL) {
+        uint8_t buf[32];  // a single encoded TVM value
+        // method selector
+        if (!pb_read(stream, buf, 4)) {
+            return 2;
+        }
         dataContext.tokenContext.fieldIndex = 0;
         dataContext.tokenContext.fieldOffset = 0;
     }
@@ -941,59 +921,21 @@ bool process_trigger_smart_contract_data_v2(pb_istream_t *stream, txContent_t *c
         if (!pb_read(stream,
                      dataContext.tokenContext.data + dataContext.tokenContext.fieldOffset,
                      copySize)) {
-            return false;
+            return 5;
         }
 
         dataContext.tokenContext.fieldOffset += copySize;
         if (copySize == blockSize) {
-            // Can process or display
-            if (dataContext.tokenContext.pluginStatus >= TRON_PLUGIN_RESULT_SUCCESSFUL) {
-                tronPluginProvideParameter_t pluginProvideParameter;
-                tron_plugin_prepare_provide_parameter(&pluginProvideParameter,
-                                                      dataContext.tokenContext.data,
-                                                      dataContext.tokenContext.fieldIndex * 32 + 4);
-                if (!tron_plugin_call(TRON_PLUGIN_PROVIDE_PARAMETER,
-                                      (void *) &pluginProvideParameter)) {
-                    PRINTF("Plugin parameter call failed\n");
-                    return false;
-                }
-                dataContext.tokenContext.fieldIndex++;
-                dataContext.tokenContext.fieldOffset = 0;
-                memset(dataContext.tokenContext.data, 0, sizeof(dataContext.tokenContext.data));
-                continue;
-            }
-
             dataContext.tokenContext.fieldIndex++;
             dataContext.tokenContext.fieldOffset = 0;
-        } else {
-            return false;
+            memset(dataContext.tokenContext.data, 0, sizeof(dataContext.tokenContext.data));
         }
     }
 
-    return true;
+    return 0;
 }
-
-static bool trigger_smart_contract_v2(txContent_t *content, pb_istream_t *stream) {
-    buffer_t contract_buffer;
-    msg.trigger_smart_contract.data.funcs.decode = pb_decode_contract_parameter;
-    msg.trigger_smart_contract.data.arg = &contract_buffer;
-
-    if (!pb_decode(stream, protocol_TriggerSmartContract_fields, &msg.trigger_smart_contract)) {
-        return false;
-    }
-
-    COPY_ADDRESS(content->account, &msg.trigger_smart_contract.owner_address);
-    COPY_ADDRESS(content->contractAddress, &msg.trigger_smart_contract.contract_address);
-    content->amount[0] = msg.trigger_smart_contract.call_value;
-
-    pb_istream_t tx_stream = pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
-
-    return process_trigger_smart_contract_data_v2(&tx_stream, content);
-}
-
-uint8_t process_trigger_smart_contract_data_v2_for_multi(pb_istream_t *stream,
-                                                         txContent_t *content,
-                                                         bool init) {
+#else
+uint8_t process_trigger_smart_contract_data(pb_istream_t *stream, txContent_t *content, bool init) {
     if (init) {
         // If handling the beginning of the data field, assume that the function selector is
         // present
@@ -1013,7 +955,8 @@ uint8_t process_trigger_smart_contract_data_v2_for_multi(pb_istream_t *stream,
                    dataContext.tokenContext.contractAddress,
                    ADDRESS_SIZE) != 0 ||
             memcmp(buf, dataContext.tokenContext.methodSelector, SELECTOR_SIZE) != 0) {
-            return 3;
+                return buf[1];
+            // return 3;
         }
 
         tronPluginInitContract_t pluginInit;
@@ -1059,7 +1002,7 @@ uint8_t process_trigger_smart_contract_data_v2_for_multi(pb_istream_t *stream,
                 if (!tron_plugin_call(TRON_PLUGIN_PROVIDE_PARAMETER,
                                       (void *) &pluginProvideParameter)) {
                     PRINTF("Plugin parameter call failed\n");
-                    return false;
+                    return 6;
                 }
                 dataContext.tokenContext.fieldIndex++;
                 dataContext.tokenContext.fieldOffset = 0;
@@ -1072,10 +1015,35 @@ uint8_t process_trigger_smart_contract_data_v2_for_multi(pb_istream_t *stream,
         }
     }
 
-    return 7;
+    return 0;
+}
+#endif
+
+static bool trigger_smart_contract_v2(txContent_t *content, pb_istream_t *stream) {
+    buffer_t contract_buffer;
+    msg.trigger_smart_contract.data.funcs.decode = pb_decode_contract_parameter;
+    msg.trigger_smart_contract.data.arg = &contract_buffer;
+
+    if (!pb_decode(stream, protocol_TriggerSmartContract_fields, &msg.trigger_smart_contract)) {
+        return false;
+    }
+
+    COPY_ADDRESS(content->account, &msg.trigger_smart_contract.owner_address);
+    COPY_ADDRESS(content->contractAddress, &msg.trigger_smart_contract.contract_address);
+    content->amount[0] = msg.trigger_smart_contract.call_value;
+
+    pb_istream_t tx_stream = pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
+
+    if (process_trigger_smart_contract_data(&tx_stream, content, true) == 0 &&
+        dataContext.tokenContext.fieldOffset == 0) {
+        return true;
+    }
+    return false;
+    // return process_trigger_smart_contract_data_v2(&tx_stream, content);
 }
 
 void copyTriggerSmartContract(uint32_t tag_last, uint32_t tag_now, txContent_t *content) {
+    // tag_now: the tag for the next decode item or the last decoded failed one
     switch (tag_now) {
         case protocol_TriggerSmartContract_owner_address_tag:
             break;
@@ -1148,7 +1116,7 @@ void copyContract(uint32_t tag_last,
 
 bool initTargetSize(txContent_t *content, uint8_t level, uint32_t tar_size) {
     switch (level) {
-        case 0:  // init all to 0
+        case T_INIT:  // init all to 0
             // bytes left for transaction_raw.contract
             content->customData = 0;
             // bytes left for transaction_raw.contract.parameter
@@ -1161,19 +1129,19 @@ bool initTargetSize(txContent_t *content, uint8_t level, uint32_t tar_size) {
             content->tokenNamesLength[0] = 0;
             content->tokenNamesLength[1] = 0;
             break;
-        case 1:  // transaction_raw.contract level
+        case T_RAW_CONTRACT:  // transaction_raw.contract level
             content->customData = tar_size;
             break;
-        case 2:  // transaction_raw.contract.parameter level
+        case T_RAW_CONTRACT_PARAMETER:  // transaction_raw.contract.parameter level
             content->amount[1] = tar_size;
             break;
-        case 3:  // transaction_raw.contract.parameter.value (in google.protobuf.Any) level
+        case T_RAW_CONTRACT_PARAMETER_VALUE:  // transaction_raw.contract.parameter.value (in google.protobuf.Any) level
             content->customSelector = tar_size;
             break;
-        case 4:  // transaction_raw.contract.parameter.value.(TriggerSmartContract)data level
+        case T_RAW_CONTRACT_PARAMETER_VALUE_L1:  // transaction_raw.contract.parameter.value.(TriggerSmartContract)data level
             content->exchangeID = tar_size;
             break;
-        case 10:
+        case 10:  // temporary usage
             content->tokenNamesLength[0] = tar_size;
             break;
         default:
@@ -1183,24 +1151,24 @@ bool initTargetSize(txContent_t *content, uint8_t level, uint32_t tar_size) {
     return true;
 }
 
-bool updateTargetSize(txContent_t *content, uint8_t level, uint8_t bytes_left) {
+bool updateTargetSize(txContent_t *content, parserDataLevel_e level, uint8_t bytes_left) {
     switch (level) {
-        case 1:  // transaction_raw.contract level
+        case T_RAW_CONTRACT:  // transaction_raw.contract level
             content->customData -= content->tokenNamesLength[0] - bytes_left;
             content->tokenNamesLength[0] = bytes_left;
             break;
-        case 2:  // transaction_raw.contract.parameter level
+        case T_RAW_CONTRACT_PARAMETER:  // transaction_raw.contract.parameter level
             content->customData -= content->tokenNamesLength[0] - bytes_left;
             content->amount[1] -= content->tokenNamesLength[0] - bytes_left;
             content->tokenNamesLength[0] = bytes_left;
             break;
-        case 3:  // transaction_raw.contract.parameter.value (in google.protobuf.Any) level
+        case T_RAW_CONTRACT_PARAMETER_VALUE:  // transaction_raw.contract.parameter.value (in google.protobuf.Any) level
             content->customData -= content->tokenNamesLength[0] - bytes_left;
             content->amount[1] -= content->tokenNamesLength[0] - bytes_left;
             content->customSelector -= content->tokenNamesLength[0] - bytes_left;
             content->tokenNamesLength[0] = bytes_left;
             break;
-        case 4:  // transaction_raw.contract.parameter.value.(TriggerSmartContract)data level
+        case T_RAW_CONTRACT_PARAMETER_VALUE_L1:  // transaction_raw.contract.parameter.value.(TriggerSmartContract)data level
             content->customData -= content->tokenNamesLength[0] - bytes_left;
             content->amount[1] -= content->tokenNamesLength[0] - bytes_left;
             content->customSelector -= content->tokenNamesLength[0] - bytes_left;
@@ -1222,10 +1190,7 @@ bool isCustomDataDone(txContent_t *content) {
     return content->customData == 0 ? true : false;
 }
 
-bool packageLeftForNext(uint8_t *buffer,
-                        uint32_t length,
-                        txContent_t *content,
-                        uint8_t bytes_left) {
+bool packageLeftForNext(uint8_t *buffer, uint32_t length, txContent_t *content, uint8_t bytes_left) {
     // wait for next time to process
     content->tokenNamesLength[0] = bytes_left;
     memmove(content->tokenNames[0],
@@ -1292,17 +1257,17 @@ bool oneMoreTimeForLeftBytes(txContent_t *content, uint8_t *buffer, uint32_t *le
     return true;
 }
 
-uint32_t getLeftForLevel(txContent_t *content, uint8_t level, uint32_t length) {
+uint32_t getLeftForLevel(txContent_t *content, parserDataLevel_e level, uint32_t length) {
     switch (level) {
-        case 0:  // transaction_raw.custom_data level
+        case T_INIT:  // transaction_raw.custom_data level
             return length >= content->customData ? content->customData : length;
-        case 1:  // transaction_raw.contract level
+        case T_RAW_CONTRACT:  // transaction_raw.contract level
             return length >= content->customData ? content->customData : length;
-        case 2:  // transaction_raw.contract.parameter level
+        case T_RAW_CONTRACT_PARAMETER:  // transaction_raw.contract.parameter level
             return length >= content->amount[1] ? content->amount[1] : length;
-        case 3:  // transaction_raw.contract.parameter.value (in google.protobuf.Any) level
+        case T_RAW_CONTRACT_PARAMETER_VALUE:  // transaction_raw.contract.parameter.value (in google.protobuf.Any) level
             return length >= content->customSelector ? content->customSelector : length;
-        case 4:  // transaction_raw.contract.parameter.value.(TriggerSmartContract)data level
+        case T_RAW_CONTRACT_PARAMETER_VALUE_L1:  // transaction_raw.contract.parameter.value.(TriggerSmartContract)data level
             return length >= (uint32_t) content->exchangeID ? (uint32_t) content->exchangeID
                                                             : length;
         default:
@@ -1311,9 +1276,9 @@ uint32_t getLeftForLevel(txContent_t *content, uint8_t level, uint32_t length) {
     return 0;
 }
 
-bool updateTag(txContent_t *content, uint8_t level, uint8_t tag) {
+bool updateTag(txContent_t *content, parserDataLevel_e level, uint8_t tag) {
     switch (level) {
-        case 0:
+        case T_INIT:
             // tag for transaction_raw level
             content->TRC20Amount[0] = tag;
             // tag for transaction_raw/contract level
@@ -1323,16 +1288,16 @@ bool updateTag(txContent_t *content, uint8_t level, uint8_t tag) {
             // tag for transaction_raw/contract/parameter.value.(TriggerSmartContract) level
             content->TRC20Amount[3] = tag;
             break;
-        case 1:  // transaction_raw level
+        case T_RAW:  // transaction_raw level
             content->TRC20Amount[0] = tag;
             break;
-        case 2:  // transaction_raw.contract level
+        case T_RAW_CONTRACT:  // transaction_raw.contract level
             content->TRC20Amount[1] = tag;
             break;
-        case 3:  // transaction_raw.contract.parameter (google.protobuf.Any) level
+        case T_RAW_CONTRACT_PARAMETER:  // transaction_raw.contract.parameter (google.protobuf.Any) level
             content->TRC20Amount[2] = tag;
             break;
-        case 4:  // transaction_raw.contract.parameter.value.(TriggerSmartContract) level
+        case T_RAW_CONTRACT_PARAMETER_VALUE:  // transaction_raw.contract.parameter.value.(TriggerSmartContract) level
             content->TRC20Amount[3] = tag;
             break;
         default:
@@ -1341,19 +1306,19 @@ bool updateTag(txContent_t *content, uint8_t level, uint8_t tag) {
     return true;
 }
 
-bool updateTagForFinished(txContent_t *content, uint8_t level) {
+bool updateTagForFinished(txContent_t *content, parserDataLevel_e level) {
     switch (level) {
-        case 0:  // transaction_raw.custom_data level
+        case T_INIT:  // transaction_raw.custom_data level
             content->TRC20Amount[0] = 0;
             break;
-        case 1:  // transaction_raw level
+        case T_RAW:  // transaction_raw level
             content->TRC20Amount[0] = protocol_Transaction_raw_fee_limit_tag + 1;
             break;
-        case 2:  // transaction_raw.contract level
+        case T_RAW_CONTRACT:  // transaction_raw.contract level
             content->TRC20Amount[0]++;
             content->TRC20Amount[1] = protocol_Transaction_Contract_Permission_id_tag + 1;
             break;
-        case 3:  // transaction_raw.contract.parameter (google.protobuf.Any) level
+        case T_RAW_CONTRACT_PARAMETER:  // transaction_raw.contract.parameter (google.protobuf.Any) level
             if (content->customData == 0) {
                 content->TRC20Amount[1] = protocol_Transaction_Contract_Permission_id_tag + 1;
             } else {
@@ -1361,7 +1326,7 @@ bool updateTagForFinished(txContent_t *content, uint8_t level) {
             }
             content->TRC20Amount[2] = google_protobuf_Any_value_tag + 1;
             break;
-        case 4:  // transaction_raw.contract.parameter.value.(TriggerSmartContract) level
+        case T_RAW_CONTRACT_PARAMETER_VALUE:  // transaction_raw.contract.parameter.value.(TriggerSmartContract) level
             if (content->amount[1] == 0) {
                 content->TRC20Amount[2] = google_protobuf_Any_value_tag + 1;
                 // because any is done, means transaction_raw.contract.parameter is done
@@ -1374,7 +1339,7 @@ bool updateTagForFinished(txContent_t *content, uint8_t level) {
             }
             content->TRC20Amount[3] = protocol_TriggerSmartContract_token_id_tag + 1;
             break;
-        case 5:
+        case T_RAW_CONTRACT_PARAMETER_VALUE_L1:
             if (content->customSelector == 0) {
                 content->TRC20Amount[3] = protocol_TriggerSmartContract_token_id_tag + 1;
                 if (content->amount[1] == 0) {
@@ -1412,56 +1377,335 @@ uint8_t getTag(txContent_t *content, uint8_t level) {
     return 0;
 }
 
-uint8_t locatePackageLevel(txContent_t *content) {
+parserDataLevel_e locatePackageLevel(txContent_t *content) {
     // all done
     if (content->TRC20Amount[0] == protocol_Transaction_raw_fee_limit_tag + 1) {
         return 10;
     }
 
-    // transaction_raw level
+    // transaction_raw.custom_data
     if (content->TRC20Amount[0] == protocol_Transaction_raw_custom_data_tag) {
-        return 0;
+        return T_INIT;
     }
+    // transaction_raw level
     if (content->TRC20Amount[0] == 0) {
-        return 1;
+        return T_RAW;
     }
     if (content->TRC20Amount[0] != protocol_Transaction_raw_contract_tag) {
-        return 1;
+        return T_RAW;
     }
 
     // transaction_raw.contract level
     if (content->TRC20Amount[1] == 0) {
-        return 1;
+        return T_RAW;
     }
     if (content->TRC20Amount[1] == protocol_Transaction_Contract_Permission_id_tag + 1) {
-        return 1;
+        return T_RAW;
     }
     if (content->TRC20Amount[1] != protocol_Transaction_Contract_parameter_tag) {
-        return 2;
+        return T_RAW_CONTRACT;
     }
 
     // transaction_raw.contract.parameter (google.protobuf.Any) level
     if (content->TRC20Amount[2] == 0) {
-        return 2;
+        return T_RAW_CONTRACT;
     }
     if (content->TRC20Amount[2] == google_protobuf_Any_value_tag + 1) {
-        return 2;
+        return T_RAW_CONTRACT;
     }
     if (content->TRC20Amount[2] != google_protobuf_Any_value_tag) {
-        return 3;
+        return T_RAW_CONTRACT_PARAMETER;
     }
 
     if (content->TRC20Amount[3] == 0) {
-        return 3;
+        return T_RAW_CONTRACT_PARAMETER;
     }
     if (content->TRC20Amount[3] == protocol_TriggerSmartContract_token_id_tag + 1) {
-        return 3;
+        return T_RAW_CONTRACT_PARAMETER;
     }
     if (content->TRC20Amount[3] != protocol_TriggerSmartContract_data_tag) {
-        return 4;
+        return T_RAW_CONTRACT_PARAMETER_VALUE;
     }
 
-    return 5;
+    return T_RAW_CONTRACT_PARAMETER_VALUE_L1;
+}
+
+uint8_t processTriggerSmartContractData(uint8_t *buffer,
+                                        uint32_t length,
+                                        txContent_t *content,
+                                        bool init) {
+    pb_istream_t stream = pb_istream_from_buffer(buffer, length);
+    initTargetSize(content, 10, stream.bytes_left);
+
+    uint8_t status = process_trigger_smart_contract_data(&stream, content, init);
+    if (status != 0) {
+        return status;
+        // return USTREAM_FAULT;
+    }
+    if (stream.bytes_left != 0) {
+        return 21;
+        // return USTREAM_FAULT;
+    }
+
+    // update contract field's size
+    // update contract parameter field's size
+    updateTargetSize(content, T_RAW_CONTRACT_PARAMETER_VALUE_L1, stream.bytes_left);
+    if (isContractDataDone(content)) {
+        return USTREAM_FINISHED;
+    }
+
+    // wait for next time to process
+    packageLeftForNext(buffer, length, content, stream.bytes_left);
+    return USTREAM_PROCESSING;
+}
+
+uint8_t decodeTriggerSmartContract(uint8_t *buffer, uint32_t length, txContent_t *content) {
+    uint32_t tag;
+    uint32_t tag_last = getTag(content, 4);
+    pb_istream_t stream = pb_istream_from_buffer(buffer, length);
+    initTargetSize(content, 10, stream.bytes_left);
+
+    buffer_t contract_buffer;
+    msg.trigger_smart_contract.data.funcs.decode = pb_decode_contract_parameter;
+    msg.trigger_smart_contract.data.arg = &contract_buffer;
+    // return tag_last+10;
+    if (!pb_decode_contract(&stream,
+                            protocol_TriggerSmartContract_fields,
+                            &msg.trigger_smart_contract,
+                            &tag)) {
+        updateTargetSize(content, T_RAW_CONTRACT_PARAMETER_VALUE, stream.bytes_left);
+
+        if (decode_tag(&stream, &tag)) {
+            copyTriggerSmartContract(tag_last, tag, content);
+            updateTag(content, T_RAW_CONTRACT_PARAMETER_VALUE, tag);
+
+            if (tag == protocol_TriggerSmartContract_data_tag) {
+                if (stream.bytes_left < 8) {
+                    // wait for next time to process
+                    packageLeftForNext(buffer, length, content, stream.bytes_left);
+                    return USTREAM_PROCESSING;
+                }
+
+                uint32_t tar_size;
+                if (!decode_field_for_contract(&stream,
+                                               protocol_TriggerSmartContract_fields,
+                                               &msg.trigger_smart_contract,
+                                               &tar_size)) {
+                    // return USTREAM_FAULT;
+                    return 50;
+                }
+                initTargetSize(content, T_RAW_CONTRACT_PARAMETER_VALUE_L1, tar_size);
+                updateTargetSize(content, T_RAW_CONTRACT_PARAMETER_VALUE, stream.bytes_left);
+
+                uint32_t subLength = getLeftForLevel(content, T_RAW_CONTRACT_PARAMETER_VALUE_L1, stream.bytes_left);
+                return processTriggerSmartContractData(buffer+(length-stream.bytes_left), subLength, content, true);
+            } else {
+                if (tag > protocol_TriggerSmartContract_data_tag) {
+                    if (tag_last <= protocol_TriggerSmartContract_data_tag) {
+                        pb_istream_t tx_stream =
+                            pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
+                        // if (!process_trigger_smart_contract_data_v2(&tx_stream, content)) {
+                        //     // return USTREAM_FAULT;
+                        //     return 51;
+                        // }
+                        if (process_trigger_smart_contract_data(&tx_stream, content, true) != 0 ||
+                            dataContext.tokenContext.fieldOffset != 0) {
+                            // return USTREAM_FAULT;
+                            return 51;
+                        }
+                    }
+                }
+
+                // wait for next time to process
+                packageLeftForNext(buffer, length, content, stream.bytes_left);
+                return USTREAM_PROCESSING;
+            }
+        } else {
+            return 51;
+            // return USTREAM_FAULT;
+        }
+    } else {
+        updateTag(content, T_RAW_CONTRACT_PARAMETER_VALUE, tag + 1);
+        updateTargetSize(content, T_RAW_CONTRACT_PARAMETER_VALUE, stream.bytes_left);
+        copyTriggerSmartContract(tag_last, tag + 1, content);
+
+        if (tag_last < protocol_TriggerSmartContract_data_tag &&
+            tag >= protocol_TriggerSmartContract_data_tag) {
+            pb_istream_t tx_stream =
+                pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
+            // if (!process_trigger_smart_contract_data_v2(&tx_stream, content)) {
+            //     // return USTREAM_FAULT;
+            //     return 52;
+            // }
+            if (process_trigger_smart_contract_data(&tx_stream, content, true) != 0 ||
+                dataContext.tokenContext.fieldOffset != 0) {
+                // return USTREAM_FAULT;
+                return 52;
+            }
+        }
+        // if (tag >= protocol_TriggerSmartContract_token_id_tag)
+        // {
+        return USTREAM_FINISHED;
+        // }
+        // return USTREAM_PROCESSING;
+    }
+}
+
+uint8_t decodeAny(uint8_t *buffer, uint32_t length, txContent_t *content) {
+    uint32_t tag;
+    uint32_t tag_last = getTag(content, 3);
+    pb_istream_t stream = pb_istream_from_buffer(buffer, length);
+    initTargetSize(content, 10, stream.bytes_left);
+
+    google_protobuf_Any anyValue;
+    memset(&anyValue, 0, sizeof(anyValue));
+
+    buffer_t contract_buffer;
+    anyValue.value.funcs.decode = pb_decode_contract_parameter;
+    anyValue.value.arg = &contract_buffer;
+    if (!pb_decode_contract(&stream, google_protobuf_Any_fields, &anyValue, &tag)) {
+        updateTargetSize(content, T_RAW_CONTRACT_PARAMETER, stream.bytes_left);
+
+        if (decode_tag(&stream, &tag)) {
+            updateTag(content, T_RAW_CONTRACT_PARAMETER, tag);
+
+            if (tag == google_protobuf_Any_value_tag) {
+                if (stream.bytes_left < 8) {
+                    // wait for next time to process
+                    packageLeftForNext(buffer, length, content, stream.bytes_left);
+                    return USTREAM_PROCESSING;
+                }
+
+                uint32_t tar_size;
+                if (!decode_field_for_contract(&stream,
+                                               google_protobuf_Any_fields,
+                                               &anyValue,
+                                               &tar_size)) {
+                    // return USTREAM_FAULT;
+                    return 53;
+                }
+                initTargetSize(content, T_RAW_CONTRACT_PARAMETER_VALUE, tar_size);
+                updateTargetSize(content, T_RAW_CONTRACT_PARAMETER, stream.bytes_left);
+
+                return decodeTriggerSmartContract(buffer + (length - stream.bytes_left),
+                                                  stream.bytes_left,
+                                                  content);
+            } else {
+                if (stream.bytes_left > 200) {
+                    // return USTREAM_FAULT;
+                    return 54;
+                }
+                // wait for next time to process
+                packageLeftForNext(buffer, length, content, stream.bytes_left);
+                return USTREAM_PROCESSING;
+            }
+        } else {
+            // return USTREAM_FAULT;
+            return 55;
+        }
+    } else {
+        updateTargetSize(content, T_RAW_CONTRACT_PARAMETER, stream.bytes_left);
+        updateTag(content, T_RAW_CONTRACT_PARAMETER, tag + 1);
+
+        if (tag_last <= google_protobuf_Any_value_tag && tag >= google_protobuf_Any_value_tag) {
+            pb_istream_t tx_stream =
+                pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
+
+            if (!trigger_smart_contract_v2(content, &tx_stream)) {
+                // return USTREAM_FAULT;
+                return 56;
+            }
+        }
+        return USTREAM_FINISHED;
+    }
+}
+
+uint8_t decodeContract(uint8_t *buffer, uint32_t length, txContent_t *content) {
+    uint32_t tag;
+    uint32_t tag_last = getTag(content, 2);
+    pb_istream_t stream = pb_istream_from_buffer(buffer, length);
+    content->tokenNamesLength[0] = stream.bytes_left;
+
+    protocol_Transaction_Contract contract;
+    memset(&contract, 0, sizeof(contract));
+    buffer_t contract_buffer;
+    contract.parameter.value.funcs.decode = pb_decode_contract_parameter;
+    contract.parameter.value.arg = &contract_buffer;
+
+    if (!pb_decode_contract(&stream, protocol_Transaction_Contract_fields, &contract, &tag)) {
+        updateTargetSize(content, T_RAW_CONTRACT, stream.bytes_left);
+
+        if (decode_tag(&stream, &tag)) {
+            updateTag(content, T_RAW_CONTRACT, tag);
+            copyContract(tag_last, tag + 1, content, &contract);
+
+            if (tag_last <= protocol_Transaction_Contract_type_tag &&
+                contract.type !=
+                    protocol_Transaction_Contract_ContractType_TriggerSmartContract) {
+                // return USTREAM_FAULT;
+                return 57;
+            }
+
+            if (tag > protocol_Transaction_Contract_parameter_tag) {
+
+                if (tag_last <= protocol_Transaction_Contract_parameter_tag) {
+                    // Contract parameter is complete, try to parse it.
+                    pb_istream_t tx_stream =
+                        pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
+                    if (!trigger_smart_contract_v2(content, &tx_stream)) {
+                        // return USTREAM_FAULT;
+                        return 58;
+                    }
+                }
+
+                // not stream.bytes_left check, maybe 'provider' 'ContractName' is big
+                // wait for next time to process
+                packageLeftForNext(buffer, length, content, stream.bytes_left);
+                return USTREAM_PROCESSING;
+            } else if (tag == protocol_Transaction_Contract_parameter_tag) {
+                if (stream.bytes_left < 8) {
+                    // wait for next time to process
+                    packageLeftForNext(buffer, length, content, stream.bytes_left);
+                    return USTREAM_PROCESSING;
+                }
+
+                uint32_t tar_size;
+                if (!decode_field_for_contract(&stream,
+                                               protocol_Transaction_Contract_fields,
+                                               &contract,
+                                               &tar_size)) {
+                    // return USTREAM_FAULT;
+                    return 59;
+                }
+                initTargetSize(content, T_RAW_CONTRACT_PARAMETER, tar_size);
+                updateTargetSize(content, T_RAW_CONTRACT, stream.bytes_left);
+
+                return decodeAny(buffer + (length - stream.bytes_left), stream.bytes_left, content);
+            }
+            // return USTREAM_FAULT;
+            return USTREAM_PROCESSING;
+        }
+        // return USTREAM_FAULT;
+        return 61;
+    } else {
+        updateTag(content, T_RAW_CONTRACT, tag + 1);
+        updateTargetSize(content, T_RAW_CONTRACT, stream.bytes_left);
+        copyContract(tag_last, tag + 1, content, &contract);
+
+        if (contract.has_parameter) {
+            pb_istream_t tx_stream =
+                pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
+            if (contract.type != protocol_Transaction_Contract_ContractType_TriggerSmartContract) {
+                // return USTREAM_FAULT;
+                return 62;
+            }
+            if (!trigger_smart_contract_v2(content, &tx_stream)) {
+                // return USTREAM_FAULT;
+                return 63;
+            }
+        }
+        return USTREAM_FINISHED;
+    }
 }
 
 uint32_t processTxForCSMulti(uint8_t *buffer, uint32_t length, txContent_t *content) {
@@ -1495,7 +1739,7 @@ uint32_t processTxForCSMulti(uint8_t *buffer, uint32_t length, txContent_t *cont
             // return USTREAM_FAULT;
             return 7;
         }
-        updateTag(content, 1, tag);
+        updateTag(content, T_RAW, tag);
         if (tag == protocol_Transaction_raw_custom_data_tag) {
             if (stream.bytes_left < 2) {
                 packageLeftForNext(buffer, length, content, stream.bytes_left);
@@ -1512,9 +1756,9 @@ uint32_t processTxForCSMulti(uint8_t *buffer, uint32_t length, txContent_t *cont
             }
 
             content->dataBytes = tar_size;
-            initTargetSize(content, 1, tar_size);
+            initTargetSize(content, T_RAW_CONTRACT, tar_size);
             initTargetSize(content, 10, stream.bytes_left);
-            updateTargetSize(content, 1, 0);
+            updateTargetSize(content, T_RAW_CONTRACT, 0);
             return USTREAM_PROCESSING;
         }
 
@@ -1544,220 +1788,10 @@ uint32_t processTxForCSMulti(uint8_t *buffer, uint32_t length, txContent_t *cont
                 // return USTREAM_FAULT;
                 return 8;
             }
-            initTargetSize(content, 1, tar_size);
+            initTargetSize(content, T_RAW_CONTRACT, tar_size);
             initTargetSize(content, 10, stream.bytes_left);
 
-            protocol_Transaction_Contract contract;
-            memset(&contract, 0, sizeof(contract));
-            contract.parameter.value.funcs.decode = pb_decode_contract_parameter;
-            contract.parameter.value.arg = &contract_buffer;
-
-            if (!pb_decode_contract(&stream,
-                                    protocol_Transaction_Contract_fields,
-                                    &contract,
-                                    &tag)) {
-                updateTargetSize(content, 1, stream.bytes_left);
-
-                if (decode_tag(&stream, &tag)) {
-                    updateTag(content, 2, tag);
-
-                    content->contractType = (contractType_e) contract.type;
-                    if (contract.type !=
-                        protocol_Transaction_Contract_ContractType_TriggerSmartContract) {
-                        // return USTREAM_FAULT;
-                        return 9;
-                    }
-
-                    if (tag > protocol_Transaction_Contract_parameter_tag) {
-                        // Contract parameter is complete, try to parse it.
-                        pb_istream_t tx_stream =
-                            pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
-                        if (!trigger_smart_contract_v2(content, &tx_stream)) {
-                            // return USTREAM_FAULT;
-                            return 10;
-                        }
-                        // not stream.bytes_left check, maybe 'provider' 'ContractName' is big
-                        // wait for next time to process
-                        if (stream.bytes_left > 200) {
-                            // return USTREAM_FAULT;
-                            return 11;
-                        }
-                        packageLeftForNext(buffer, length, content, stream.bytes_left);
-                        return USTREAM_PROCESSING;
-
-                    } else if (tag == protocol_Transaction_Contract_parameter_tag) {
-                        if (stream.bytes_left < 8) {
-                            // wait for next time to process
-                            packageLeftForNext(buffer, length, content, stream.bytes_left);
-                            return USTREAM_PROCESSING;
-                        }
-
-                        if (!decode_field_for_contract(&stream,
-                                                       protocol_Transaction_Contract_fields,
-                                                       &contract,
-                                                       &tar_size)) {
-                            // return USTREAM_FAULT;
-                            return 11;
-                        }
-                        initTargetSize(content, 2, tar_size);
-                        updateTargetSize(content, 1, stream.bytes_left);
-
-                        google_protobuf_Any anyValue;
-                        memset(&anyValue, 0, sizeof(anyValue));
-                        if (!pb_decode_contract(&stream,
-                                                google_protobuf_Any_fields,
-                                                &anyValue,
-                                                &tag)) {
-                            updateTargetSize(content, 2, stream.bytes_left);
-
-                            if (decode_tag(&stream, &tag)) {
-                                updateTag(content, 3, tag);
-
-                                if (tag == google_protobuf_Any_value_tag) {
-                                    if (stream.bytes_left < 8) {
-                                        // wait for next time to process
-                                        packageLeftForNext(buffer,
-                                                           length,
-                                                           content,
-                                                           stream.bytes_left);
-                                        return USTREAM_PROCESSING;
-                                    }
-
-                                    if (!decode_field_for_contract(&stream,
-                                                                   google_protobuf_Any_fields,
-                                                                   &anyValue,
-                                                                   &tar_size)) {
-                                        // return USTREAM_FAULT;
-                                        return 12;
-                                    }
-                                    initTargetSize(content, 3, tar_size);
-                                    updateTargetSize(content, 2, stream.bytes_left);
-
-                                    msg.trigger_smart_contract.data.funcs.decode =
-                                        pb_decode_contract_parameter;
-                                    msg.trigger_smart_contract.data.arg = &contract_buffer;
-
-                                    if (!pb_decode_contract(&stream,
-                                                            protocol_TriggerSmartContract_fields,
-                                                            &msg.trigger_smart_contract,
-                                                            &tag)) {
-                                        updateTargetSize(content, 3, stream.bytes_left);
-
-                                        if (decode_tag(&stream, &tag)) {
-                                            updateTag(content, 4, tag);
-
-                                            copyTriggerSmartContract(0, tag, content);
-
-                                            if (tag == protocol_TriggerSmartContract_data_tag) {
-                                                if (stream.bytes_left < 8) {
-                                                    // wait for next time to process
-                                                    packageLeftForNext(buffer,
-                                                                       length,
-                                                                       content,
-                                                                       stream.bytes_left);
-                                                    return USTREAM_PROCESSING;
-                                                }
-                                                if (!decode_field_for_contract(
-                                                        &stream,
-                                                        protocol_TriggerSmartContract_fields,
-                                                        &msg.trigger_smart_contract,
-                                                        &tar_size)) {
-                                                    // return USTREAM_FAULT;
-                                                    return 12;
-                                                }
-                                                initTargetSize(content, 4, tar_size);
-                                                updateTargetSize(content, 3, stream.bytes_left);
-
-                                                if (process_trigger_smart_contract_data_v2_for_multi(
-                                                        &stream,
-                                                        content,
-                                                        true) < 7) {
-                                                    // return USTREAM_FAULT;
-                                                    return 21;
-                                                }
-                                                if (stream.bytes_left != 0) {
-                                                    // return USTREAM_FAULT;
-                                                    return 14;
-                                                }
-
-                                                updateTargetSize(content, 4, stream.bytes_left);
-
-                                                // wait for next time to process
-                                                packageLeftForNext(buffer,
-                                                                   length,
-                                                                   content,
-                                                                   stream.bytes_left);
-                                                return USTREAM_PROCESSING;
-                                            } else {
-                                                if (tag > protocol_TriggerSmartContract_data_tag) {
-                                                    pb_istream_t tx_stream = pb_istream_from_buffer(
-                                                        contract_buffer.buf,
-                                                        contract_buffer.size);
-                                                    if (!process_trigger_smart_contract_data_v2(
-                                                            &tx_stream,
-                                                            content)) {
-                                                        // return USTREAM_FAULT;
-                                                        return 15;
-                                                    }
-                                                }
-
-                                                if (stream.bytes_left > 200) {
-                                                    // return USTREAM_FAULT;
-                                                    return 30;
-                                                }
-                                                // wait for next time to process
-                                                packageLeftForNext(buffer,
-                                                                   length,
-                                                                   content,
-                                                                   stream.bytes_left);
-                                                return USTREAM_PROCESSING;
-                                            }
-                                        } else {
-                                            // return USTREAM_FAULT;
-                                            return 31;
-                                        }
-                                    } else {
-                                        updateTag(content, 4, tag + 1);
-                                        updateTargetSize(content, 3, stream.bytes_left);
-                                        copyTriggerSmartContract(0, tag, content);
-                                        return USTREAM_PROCESSING;
-                                    }
-                                } else {
-                                    if (stream.bytes_left > 200) {
-                                        // return USTREAM_FAULT;
-                                        return 30;
-                                    }
-                                    // wait for next time to process
-                                    packageLeftForNext(buffer, length, content, stream.bytes_left);
-                                    return USTREAM_PROCESSING;
-                                }
-                            }
-                            // // wait for next time to process
-                            // packageLeftForNext(buffer, length, content, stream.bytes_left);
-                            // return USTREAM_PROCESSING;
-                            // // return USTREAM_FAULT;
-                            return 30;
-                        } else {
-                            updateTag(content, 3, tag + 1);
-                            updateTargetSize(content, 2, stream.bytes_left);
-                            return USTREAM_PROCESSING;
-                        }
-                        // return USTREAM_FAULT;
-                        return 32;
-                    }
-                    // return USTREAM_FAULT;
-                    return 16;
-                }
-                // return USTREAM_FAULT;
-                return 17;
-            } else {
-                updateTag(content, 2, tag + 1);
-                updateTargetSize(content, 1, stream.bytes_left);
-                copyContract(0, tag, content, &contract);
-                return USTREAM_PROCESSING;
-            }
-            // return USTREAM_FAULT;
-            return 18;
+            return decodeContract(buffer + (length - stream.bytes_left), stream.bytes_left, content);
         } else {
             if (transaction.contract->has_parameter) {
                 copyContract(0,
@@ -1817,275 +1851,9 @@ uint32_t processTxForCSMulti(uint8_t *buffer, uint32_t length, txContent_t *cont
     }
 }
 
-uint8_t processTriggerSmartContractData(uint8_t *buffer,
-                                        uint32_t length,
-                                        txContent_t *content,
-                                        bool init) {
-    pb_istream_t stream = pb_istream_from_buffer(buffer, length);
-    initTargetSize(content, 10, stream.bytes_left);
-
-    uint8_t status = process_trigger_smart_contract_data_v2_for_multi(&stream, content, init);
-    if (status < 7) {
-        return 25;
-        // return USTREAM_FAULT;
-    }
-    if (stream.bytes_left != 0) {
-        return 21;
-        // return USTREAM_FAULT;
-    }
-
-    // update contract field's size
-    // update contract parameter field's size
-    updateTargetSize(content, 4, stream.bytes_left);
-    if (isContractDataDone(content)) {
-        return USTREAM_FINISHED;
-    }
-
-    // wait for next time to process
-    packageLeftForNext(buffer, length, content, stream.bytes_left);
-    return USTREAM_PROCESSING;
-}
-
-uint8_t decodeTriggerSmartContract(uint8_t *buffer, uint32_t length, txContent_t *content) {
-    uint32_t tag;
-    uint32_t tag_last = getTag(content, 4);
-    pb_istream_t stream = pb_istream_from_buffer(buffer, length);
-    initTargetSize(content, 10, stream.bytes_left);
-
-    buffer_t contract_buffer;
-    msg.trigger_smart_contract.data.funcs.decode = pb_decode_contract_parameter;
-    msg.trigger_smart_contract.data.arg = &contract_buffer;
-    // return tag_last+10;
-    if (!pb_decode_contract(&stream,
-                            protocol_TriggerSmartContract_fields,
-                            &msg.trigger_smart_contract,
-                            &tag)) {
-        updateTargetSize(content, 3, stream.bytes_left);
-
-        if (decode_tag(&stream, &tag)) {
-            copyTriggerSmartContract(tag_last, tag, content);
-            updateTag(content, 4, tag);
-
-            if (tag == protocol_TriggerSmartContract_data_tag) {
-                if (stream.bytes_left < 8) {
-                    // wait for next time to process
-                    packageLeftForNext(buffer, length, content, stream.bytes_left);
-                    return USTREAM_PROCESSING;
-                }
-
-                uint32_t tar_size;
-                if (!decode_field_for_contract(&stream,
-                                               protocol_TriggerSmartContract_fields,
-                                               &msg.trigger_smart_contract,
-                                               &tar_size)) {
-                    // return USTREAM_FAULT;
-                    return 50;
-                }
-                initTargetSize(content, 4, tar_size);
-                updateTargetSize(content, 3, stream.bytes_left);
-
-                uint32_t subLength2 = stream.bytes_left >= content->exchangeID ? content->exchangeID
-                                                                               : stream.bytes_left;
-                return processTriggerSmartContractData(buffer, subLength2, content, true);
-            } else {
-                if (tag > protocol_TriggerSmartContract_data_tag) {
-                    if (tag_last <= protocol_TriggerSmartContract_data_tag) {
-                        pb_istream_t tx_stream =
-                            pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
-                        if (!process_trigger_smart_contract_data_v2(&tx_stream, content)) {
-                            // return USTREAM_FAULT;
-                            return 51;
-                        }
-                    }
-                }
-
-                // wait for next time to process
-                packageLeftForNext(buffer, length, content, stream.bytes_left);
-                return USTREAM_PROCESSING;
-            }
-        } else {
-            return 51;
-            // return USTREAM_FAULT;
-        }
-    } else {
-        updateTargetSize(content, 3, stream.bytes_left);
-
-        copyTriggerSmartContract(tag_last, tag + 1, content);
-
-        if (tag_last < protocol_TriggerSmartContract_data_tag &&
-            tag >= protocol_TriggerSmartContract_data_tag) {
-            pb_istream_t tx_stream =
-                pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
-            if (!process_trigger_smart_contract_data_v2(&tx_stream, content)) {
-                // return USTREAM_FAULT;
-                return 52;
-            }
-        }
-        // if (tag >= protocol_TriggerSmartContract_token_id_tag)
-        // {
-        return USTREAM_FINISHED;
-        // }
-        // return USTREAM_PROCESSING;
-    }
-}
-
-uint8_t decodeAny(uint8_t *buffer, uint32_t length, txContent_t *content) {
-    uint32_t tag;
-    uint32_t tag_last = getTag(content, 3);
-    pb_istream_t stream = pb_istream_from_buffer(buffer, length);
-    initTargetSize(content, 10, stream.bytes_left);
-
-    google_protobuf_Any anyValue;
-    memset(&anyValue, 0, sizeof(anyValue));
-
-    buffer_t contract_buffer;
-    anyValue.value.funcs.decode = pb_decode_contract_parameter;
-    anyValue.value.arg = &contract_buffer;
-    if (!pb_decode_contract(&stream, google_protobuf_Any_fields, &anyValue, &tag)) {
-        updateTargetSize(content, 2, stream.bytes_left);
-
-        if (decode_tag(&stream, &tag)) {
-            updateTag(content, 3, tag);
-
-            if (tag == google_protobuf_Any_value_tag) {
-                if (stream.bytes_left < 8) {
-                    // wait for next time to process
-                    packageLeftForNext(buffer, length, content, stream.bytes_left);
-                    return USTREAM_PROCESSING;
-                }
-
-                uint32_t tar_size;
-                if (!decode_field_for_contract(&stream,
-                                               google_protobuf_Any_fields,
-                                               &anyValue,
-                                               &tar_size)) {
-                    // return USTREAM_FAULT;
-                    return 53;
-                }
-                initTargetSize(content, 3, tar_size);
-                updateTargetSize(content, 2, stream.bytes_left);
-
-                return decodeTriggerSmartContract(buffer + (length - stream.bytes_left),
-                                                  stream.bytes_left,
-                                                  content);
-            } else {
-                if (stream.bytes_left > 200) {
-                    // return USTREAM_FAULT;
-                    return 54;
-                }
-                // wait for next time to process
-                packageLeftForNext(buffer, length, content, stream.bytes_left);
-                return USTREAM_PROCESSING;
-            }
-        } else {
-            // return USTREAM_FAULT;
-            return 55;
-        }
-    } else {
-        updateTargetSize(content, 2, stream.bytes_left);
-
-        if (tag_last <= google_protobuf_Any_value_tag && tag >= google_protobuf_Any_value_tag) {
-            pb_istream_t tx_stream =
-                pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
-
-            if (!trigger_smart_contract_v2(content, &tx_stream)) {
-                // return USTREAM_FAULT;
-                return 56;
-            }
-        }
-        return USTREAM_FINISHED;
-    }
-}
-
-uint8_t decodeContract(uint8_t *buffer, uint32_t length, txContent_t *content) {
-    uint32_t tag;
-    uint32_t tag_last = getTag(content, 2);
-    pb_istream_t stream = pb_istream_from_buffer(buffer, length);
-    content->tokenNamesLength[0] = stream.bytes_left;
-
-    protocol_Transaction_Contract contract;
-    memset(&contract, 0, sizeof(contract));
-    buffer_t contract_buffer;
-    contract.parameter.value.funcs.decode = pb_decode_contract_parameter;
-    contract.parameter.value.arg = &contract_buffer;
-
-    if (!pb_decode_contract(&stream, protocol_Transaction_Contract_fields, &contract, &tag)) {
-        updateTargetSize(content, 1, stream.bytes_left);
-
-        if (decode_tag(&stream, &tag)) {
-            updateTag(content, 2, tag);
-
-            if (tag > protocol_Transaction_Contract_parameter_tag) {
-                copyContract(tag_last, tag + 1, content, &contract);
-
-                if (tag_last <= protocol_Transaction_Contract_type_tag &&
-                    contract.type !=
-                        protocol_Transaction_Contract_ContractType_TriggerSmartContract) {
-                    // return USTREAM_FAULT;
-                    return 57;
-                }
-                if (tag_last <= protocol_Transaction_Contract_parameter_tag) {
-                    // Contract parameter is complete, try to parse it.
-                    pb_istream_t tx_stream =
-                        pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
-                    if (!trigger_smart_contract_v2(content, &tx_stream)) {
-                        // return USTREAM_FAULT;
-                        return 58;
-                    }
-                }
-
-                // not stream.bytes_left check, maybe 'provider' 'ContractName' is big
-                // wait for next time to process
-                packageLeftForNext(buffer, length, content, stream.bytes_left);
-                return USTREAM_PROCESSING;
-            } else if (tag == protocol_Transaction_Contract_parameter_tag) {
-                if (stream.bytes_left < 8) {
-                    // wait for next time to process
-                    packageLeftForNext(buffer, length, content, stream.bytes_left);
-                    return USTREAM_PROCESSING;
-                }
-
-                uint32_t tar_size;
-                if (!decode_field_for_contract(&stream,
-                                               protocol_Transaction_Contract_fields,
-                                               &contract,
-                                               &tar_size)) {
-                    // return USTREAM_FAULT;
-                    return 59;
-                }
-                initTargetSize(content, 2, tar_size);
-                updateTargetSize(content, 1, stream.bytes_left);
-
-                return decodeAny(buffer + (length - stream.bytes_left), stream.bytes_left, content);
-            }
-            // return USTREAM_FAULT;
-            return 60;
-        }
-        // return USTREAM_FAULT;
-        return 61;
-    } else {
-        updateTargetSize(content, 1, stream.bytes_left);
-        copyContract(tag_last, tag + 1, content, &contract);
-
-        if (contract.has_parameter) {
-            pb_istream_t tx_stream =
-                pb_istream_from_buffer(contract_buffer.buf, contract_buffer.size);
-            if (contract.type != protocol_Transaction_Contract_ContractType_TriggerSmartContract) {
-                // return USTREAM_FAULT;
-                return 62;
-            }
-            if (!trigger_smart_contract_v2(content, &tx_stream)) {
-                // return USTREAM_FAULT;
-                return 63;
-            }
-        }
-        return USTREAM_FINISHED;
-    }
-}
-
-uint8_t processCustomData(uint8_t *buffer, uint32_t length, txContent_t *content) {
+uint8_t processCustomData(uint32_t length, txContent_t *content) {
     initTargetSize(content, 10, length);
-    updateTargetSize(content, 1, 0);
+    updateTargetSize(content, T_RAW_CONTRACT, 0);
     if (isCustomDataDone(content)) {
         return USTREAM_FINISHED;
     }
@@ -2101,8 +1869,8 @@ uint32_t processTxForCSPart(uint8_t *buffer, uint32_t length, txContent_t *conte
 
     // P1_FIRST
     if (state == 0x00) {
-        updateTag(content, 0, 0);
-        initTargetSize(content, 0, 0);
+        updateTag(content, T_INIT, 0);
+        initTargetSize(content, T_INIT, 0);
 
         return processTxForCSMulti(buffer, length, content);
     }
@@ -2121,11 +1889,11 @@ uint32_t processTxForCSPart(uint8_t *buffer, uint32_t length, txContent_t *conte
     //     return locatePackageLevel(content)+10;
     // }
     switch (level) {
-        case 0:
-            subLength = getLeftForLevel(content, 0, length);
-            ret = processCustomData(buffer, subLength, content);
+        case T_INIT: // custom_data
+            subLength = getLeftForLevel(content, T_INIT, length);
+            ret = processCustomData(subLength, content);
             break;
-        case 1:
+        case T_RAW:
             subLength = length;
             ret = processTxForCSMulti(buffer, subLength, content);
             // return content->amount[1];
@@ -2133,8 +1901,8 @@ uint32_t processTxForCSPart(uint8_t *buffer, uint32_t length, txContent_t *conte
             // return content->amount[1]+10;
             // return content->tokenNamesLength[0];
             break;
-        case 2:
-            subLength = getLeftForLevel(content, 1, length);
+        case T_RAW_CONTRACT:
+            subLength = getLeftForLevel(content, T_RAW_CONTRACT, length);
             // return length+10;
             //    return content->customData+10;
             // return content->amount[1]+10;
@@ -2153,15 +1921,15 @@ uint32_t processTxForCSPart(uint8_t *buffer, uint32_t length, txContent_t *conte
             // return content->tokenNamesLength[1]+10;
             // return locatePackageLevel(content)+10;
             break;
-        case 3:
-            subLength = getLeftForLevel(content, 2, length);
+        case T_RAW_CONTRACT_PARAMETER:
+            subLength = getLeftForLevel(content, T_RAW_CONTRACT_PARAMETER, length);
             // return content->amount[1];
             // return length; //107
             ret = decodeAny(buffer, subLength, content);
             // return content->customSelector+10;
             break;
-        case 4:
-            subLength = getLeftForLevel(content, 3, length);
+        case T_RAW_CONTRACT_PARAMETER_VALUE:
+            subLength = getLeftForLevel(content, T_RAW_CONTRACT_PARAMETER_VALUE, length);
             // return content->amount[1]; //116
             // return content->customSelector;
             // return content->customData+10; //118
@@ -2175,16 +1943,8 @@ uint32_t processTxForCSPart(uint8_t *buffer, uint32_t length, txContent_t *conte
             // return (buffer+subLength)[2];
             // return ret+10;
             break;
-        case 5:
-            subLength = getLeftForLevel(content, 4, length);
-            // if (state == 0x90)
-            // {
-            //     // return locatePackageLevel(content)+10;
-            //     // return content->amount[1];
-            //     // return content->customSelector+10;
-            //     // return subLength;
-            // }
-            // return content->amount[1]+10;
+        case T_RAW_CONTRACT_PARAMETER_VALUE_L1:
+            subLength = getLeftForLevel(content, T_RAW_CONTRACT_PARAMETER_VALUE_L1, length);
             ret = processTriggerSmartContractData(buffer, subLength, content, false);
             // if (state == 0x90)
             // {
@@ -2224,10 +1984,7 @@ uint32_t processTxForCSPart(uint8_t *buffer, uint32_t length, txContent_t *conte
     return USTREAM_PROCESSING;
 }
 
-uint32_t processTxForCSMultiParts(uint8_t *buffer,
-                                  uint32_t length,
-                                  txContent_t *content,
-                                  uint8_t state) {
+uint32_t processCSTxV2(uint8_t *buffer, uint32_t length, txContent_t *content, uint8_t state) {
     // if (state == 0x90)
     // {
     //     // return content->tokenNamesLength[0]+20;
@@ -2292,7 +2049,7 @@ uint32_t processTxForCSMultiParts(uint8_t *buffer,
     return txResult;
 }
 
-parserStatus_e processTxForClearSign(uint8_t *buffer, uint32_t length, txContent_t *content) {
+parserStatus_e processCSTx(uint8_t *buffer, uint32_t length, txContent_t *content) {
     protocol_Transaction_raw transaction;
 
     if (length == 0) {
@@ -2338,6 +2095,7 @@ parserStatus_e processTxForClearSign(uint8_t *buffer, uint32_t length, txContent
 
     return USTREAM_PROCESSING;
 }
+
 int bytes_to_string(char *out, size_t outl, const void *value, size_t len) {
     if (outl <= 2) {
         // Need at least '0x' and 1 digit

@@ -56,7 +56,7 @@ void io_seproxyhal_send_status(uint32_t sw) {
     io_exchange(CHANNEL_APDU | IO_RETURN_AFTER_TX, 2);
 }
 
-void reportFinalizeError(bool direct) {
+void reportFinalizeError() {
     reset_app_context();
     io_send_sw(E_INCORRECT_DATA);
 }
@@ -71,7 +71,7 @@ __attribute__((noinline)) static uint8_t finalize_parsing_helper(bool direct) {
 
         if (!tron_plugin_call(TRON_PLUGIN_FINALIZE, (void *) &pluginFinalize)) {
             PRINTF("Plugin finalize call failed\n");
-            reportFinalizeError(direct);
+            reportFinalizeError();
             if (!direct) {
                 return 7;
             }
@@ -99,7 +99,7 @@ __attribute__((noinline)) static uint8_t finalize_parsing_helper(bool direct) {
             if (tron_plugin_call(TRON_PLUGIN_PROVIDE_INFO, (void *) &pluginProvideInfo) <=
                 TRON_PLUGIN_RESULT_UNSUCCESSFUL) {
                 PRINTF("Plugin provide token call failed\n");
-                reportFinalizeError(direct);
+                reportFinalizeError();
                 if (!direct) {
                     return 8;
                 }
@@ -117,7 +117,7 @@ __attribute__((noinline)) static uint8_t finalize_parsing_helper(bool direct) {
                     break;
                 default:
                     PRINTF("ui type %d not supported\n", pluginFinalize.uiType);
-                    reportFinalizeError(direct);
+                    reportFinalizeError();
                     if (!direct) {
                         return 9;
                     }
@@ -126,7 +126,7 @@ __attribute__((noinline)) static uint8_t finalize_parsing_helper(bool direct) {
     }
 
     // if (tmpContent.txContent.dataPresent && !N_storage.dataAllowed) {
-    //     reportFinalizeError(direct);
+    //     reportFinalizeError();
     //     ui_warning_contract_data();
     //     if (!direct) {
     //         return false;
@@ -189,15 +189,16 @@ int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLe
     uint16_t txResult;
     // process buffer
     if (p1 == P1_SIGN) {
-        txResult = processTxForClearSign(workBuffer, dataLength, &txContent);
+        txResult = processCSTx(workBuffer, dataLength, &txContent);
     } else {
-        // txResult = processTxForCSMultiParts(workBuffer, dataLength, &txContent, p1);
-        uint32_t ret = processTxForCSMultiParts(workBuffer, dataLength, &txContent, p1);
-        // if (ret != 0 && ret != 1)
-        // {
-        //     return io_send_sw(ret);
-        // }
-        // return io_send_sw(ret);
+        // txResult = processCSTxV2(workBuffer, dataLength, &txContent, p1);
+        uint32_t ret = processCSTxV2(workBuffer, dataLength, &txContent, p1);
+#if defined(PLUGIN_TEST_LOCAL)
+        if (ret != 0 && ret != 1) {
+            return io_send_sw(ret);
+        }
+        return io_send_sw(E_OK);
+#endif
         txResult = ret;
         // return io_send_sw(txContent.exchangeID);
         // if (p1 == P1_LAST)
