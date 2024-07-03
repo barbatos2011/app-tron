@@ -66,6 +66,8 @@ class InsType(IntEnum):
     GET_ECDH_SECRET = 0x0A
     EXTERNAL_PLUGIN_SETUP     = 0x12
     CLEAR_SIGN =           0xC4
+    SIGN_TIP_712_MESSAGE = 0x0C
+
 
 class Errors(IntEnum):
     OK = 0x9000

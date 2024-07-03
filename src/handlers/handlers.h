@@ -31,6 +31,7 @@
 #define INS_GET_ECDH_SECRET       0x0A
 #define INS_SET_EXTERNAL_PLUGIN   0x12
 #define INS_CLEAR_SIGN            0xC4
+#define INS_SIGN_TIP_712_MESSAGE  0x0C
 
 #define P1_CONFIRM     0x01
 #define P1_NON_CONFIRM 0x00
@@ -53,5 +54,9 @@ int handleSignByHash(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataL
 int handleGetAppConfiguration(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLength);
 int handleSignPersonalMessage(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLength);
 int handleECDHSecret(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLength);
+<<<<<<< HEAD
 int handleSetExternalPlugin(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLength);
 int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLength);
+=======
+int handleSignTIP712Message(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLength);
+>>>>>>> develop
