@@ -779,6 +779,77 @@ UX_DEF(ux_sign_flow,
        &ux_sign_flow_4_step,
        &ux_sign_flow_5_step);
 
+//  Sign TRC712 message
+//////////////////////////////////////////////////////////////////////
+
+void prepare_domain_hash_v0() {
+    bytes_to_string(strings.tmp.tmp,
+                    sizeof(strings.tmp.tmp),
+                    messageSigningContext712.domainHash,
+                    32);
+}
+
+void prepare_message_hash_v0() {
+    bytes_to_string(strings.tmp.tmp,
+                    sizeof(strings.tmp.tmp),
+                    messageSigningContext712.messageHash,
+                    32);
+}
+
+UX_STEP_NOCB(ux_sign_712_v0_1_step,
+             pnn,
+             {
+                 &C_icon_certificate,
+                 "Sign",
+                 "typed message",
+             });
+UX_STEP_NOCB_INIT(ux_sign_712_v0_2_step,
+                  bnnn_paging,
+                  prepare_domain_hash_v0(),
+                  {
+                      .title = "Domain hash",
+                      .text = strings.tmp.tmp,
+                  });
+UX_STEP_NOCB_INIT(ux_sign_712_v0_3_step,
+                  bnnn_paging,
+                  prepare_message_hash_v0(),
+                  {
+                      .title = "Message hash",
+                      .text = strings.tmp.tmp,
+                  });
+UX_STEP_VALID(ux_sign_712_v0_4_step,
+              pbb,
+              ui_callback_signMessage712_v0_ok(true),
+              {
+                  &C_icon_validate_14,
+                  "Sign",
+                  "message",
+              });
+UX_STEP_VALID(ux_sign_712_v0_5_step,
+              pbb,
+              ui_callback_signMessage712_v0_cancel(true),
+              {
+                  &C_icon_crossmark,
+                  "Cancel",
+                  "signature",
+              });
+
+// UX_DEF(ux_sign_712_v0_flow,
+//         &ux_sign_712_v0_1_step,
+//         &ux_sign_712_v0_2_step,
+//         &ux_sign_712_v0_3_step,
+//         &ux_sign_712_v0_4_step,
+//         &ux_sign_712_v0_5_step);
+
+const ux_flow_step_t *const ux_sign_712_v0_flow[] = {
+    &ux_sign_712_v0_1_step,
+    &ux_sign_712_v0_2_step,
+    &ux_sign_712_v0_3_step,
+    &ux_sign_712_v0_4_step,
+    &ux_sign_712_v0_5_step,
+    FLOW_END_STEP,
+};
+
 // CUSTOM CONTRACT
 //////////////////////////////////////////////////////////////////////
 UX_STEP_NOCB(ux_approval_custom_contract_1_step,
@@ -992,13 +1063,15 @@ void ux_flow_display(ui_approval_state_t state, bool data_warning) {
                                         : ux_approval_withdraw_expire_unfreeze_flow),
                 NULL);
             break;
+        case APPROVAL_SIGN_TIP72_TRANSACTION:
+            ux_flow_init(0, ux_sign_712_v0_flow, NULL);
+            break;
         case APPROVAL_CANCELALLUNFREEZEV2_TRANSACTION:
             ux_flow_init(
                 0,
                 ((data_warning == true) ? ux_approval_cancel_all_unfreeze_v2_data_warning_flow
                                         : ux_approval_cancel_all_unfreeze_v2_flow),
                 NULL);
-            break;
         default:
             PRINTF("This should not happen !\n");
             break;
