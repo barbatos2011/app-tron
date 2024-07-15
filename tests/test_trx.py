@@ -13,7 +13,7 @@ from pathlib import Path
 from Crypto.Hash import keccak
 from cryptography.hazmat.primitives.asymmetric import ec
 from inspect import currentframe
-from tron import TronClient, Errors, CLA, InsType
+from tron import TronClient, Errors, CLA, InsType, TronCommandBuilder
 from ragger.bip import pack_derivation_path
 from utils import check_tx_signature, check_hash_signature
 from eth_keys import KeyAPI
@@ -656,3 +656,35 @@ class TestTRX():
                 owner_address=bytes.fromhex(
                     client.getAccount(0)['addressHex'])))
         self.sign_and_validate(client, firmware, 0, tx)
+
+    def test_trx_sign_personal_message(self, backend, firmware, navigator):
+        client = TronClient(backend, firmware, navigator)
+        builder = TronCommandBuilder(True)
+
+        SIGN_MAGIC = b'\x19TRON Signed Message:\n'
+        message = 'CryptoChain-TronSR Ledger Transactions Tests'.encode()
+        bip32_path=client.getAccount(0)['path']
+
+        for islast_apdu, apdu in builder.personal_sign_tx(bip32_path=bip32_path, transaction=message):
+            if islast_apdu:
+                with backend.exchange_async(apdu[0], apdu[1], apdu[2],
+                                        apdu[3], apdu[5:]):
+                    if firmware.device == "stax":
+                        text = "Hold to sign"
+                    else:
+                        text = "message"
+                    client.navigate(Path(currentframe().f_code.co_name), text)
+            else:
+                client.send_apdu(apdu)
+
+        resp = backend.last_async_response
+
+        signedMessage = SIGN_MAGIC + str(len(message)).encode() + message
+        keccak_hash = keccak.new(digest_bits=256)
+        keccak_hash.update(signedMessage)
+        hash_to_sign = keccak_hash.digest()
+        print(hash_to_sign)
+
+        assert check_hash_signature(hash_to_sign, resp.data[0:65],
+                                    client.getAccount(0)['publicKey'][2:])
+        # pytest ./tests/ -k "sign_personal_message" --tb=short -v --device nanosp --golden_run --log_apdu_file tests/test.log

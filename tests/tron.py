@@ -16,6 +16,9 @@ from ragger.backend.interface import BackendInterface, RAPDU
 from ragger.navigator import NavInsID, NavIns
 from ragger.bip import pack_derivation_path
 from conftest import MNEMONIC
+from utils import packed_bip32_path_from_string
+from speculos.client import ApduException
+
 '''
 Tron Protobuf
 '''
@@ -363,3 +366,180 @@ class TronClient:
         else:
             return self._client.exchange(CLA, InsType.SIGN, p1, 0x00,
                                          messages[-1])
+
+    def send_apdu(self, apdu: bytes) -> bytes:
+        try:
+            self._client.exchange(cla=apdu[0], ins=apdu[1],
+                                        p1=apdu[2], p2=apdu[3],
+                                        data=apdu[5:])
+        except ApduException as error:
+            raise DeviceException(error_code=error.sw, ins=InsType.INS_SIGN_TX)
+
+
+MAX_APDU_LEN: int = 255
+
+
+def chunked(size, source):
+    for i in range(0, len(source), size):
+        yield source[i:i+size]
+
+class TronCommandBuilder:
+    """APDU command builder for the Boilerplate application.
+
+    Parameters
+    ----------
+    debug: bool
+        Whether you want to see logging or not.
+
+    Attributes
+    ----------
+    debug: bool
+        Whether you want to see logging or not.
+
+    """
+    CLA: int = 0xE0
+
+    def __init__(self, debug: bool = False):
+        """Init constructor."""
+        self.debug = debug
+
+    def _serialize(self,
+                   cla: int,
+                   ins: InsType,
+                   p1: int,
+                   p2: int,
+                   cdata: bytes = bytes()) -> bytes:
+        """Serialize the whole APDU command (header + data).
+
+        Parameters
+        ----------
+        cla : int
+            Instruction class: CLA (1 byte)
+        ins : Union[int, IntEnum]
+            Instruction code: INS (1 byte)
+        p1 : int
+            Instruction parameter 1: P1 (1 byte).
+        p2 : int
+            Instruction parameter 2: P2 (1 byte).
+        cdata : bytes
+            Bytes of command data.
+
+        Returns
+        -------
+        bytes
+            Bytes of a complete APDU command.
+
+        """
+
+        header = bytearray()
+        header.append(cla)
+        header.append(ins)
+        header.append(p1)
+        header.append(p2)
+        header.append(len(cdata))
+        return header + cdata
+
+    def _string_to_bytes(self, string: str) -> bytes:
+        data = bytearray()
+        for char in string:
+            data.append(ord(char))
+        return data
+
+    def set_external_plugin(self, plugin_name: str, contract_address: bytes, selector: bytes, sig: bytes) -> bytes:
+        data = bytearray()
+        data.append(len(plugin_name))
+        data += self._string_to_bytes(plugin_name)
+        data += contract_address
+        data += selector
+        data += sig
+
+        return self._serialize(self.CLA, InsType.EXTERNAL_PLUGIN_SETUP,
+                               P1.FIRST,
+                               0x00,
+                               data)
+
+    def personal_sign_tx(self, bip32_path: str, transaction: bytes) -> Tuple[bool,bytes]:
+        """Command builder for INS_SIGN_PERSONAL_TX.
+
+        Parameters
+        ----------
+        bip32_path : str
+            String representation of BIP32 path.
+        transaction : Transaction
+            Representation of the transaction to be signed.
+
+        Yields
+        -------
+        bytes
+            APDU command chunk for INS_SIGN_PERSONAL_TX.
+
+        """
+
+        cdata = packed_bip32_path_from_string(bip32_path)
+
+        tx: bytes = b"".join([
+            len(transaction).to_bytes(4, byteorder="big"),
+            transaction,
+        ])
+
+        cdata = cdata + tx
+        last_chunk = len(cdata) // MAX_APDU_LEN
+
+        # The generator allows to send apdu frames because we can't send an apdu > 255
+        for i, (chunk) in enumerate(chunked(MAX_APDU_LEN, cdata)):
+            if i == 0 and i == last_chunk:
+                yield True, self._serialize(cla=self.CLA,
+                        ins=InsType.SIGN_PERSONAL_MESSAGE,
+                        p1=0x00,
+                        p2=0x00,
+                        cdata=chunk)
+            elif i == 0:
+                yield False, self._serialize(cla=self.CLA,
+                        ins=InsType.SIGN_PERSONAL_MESSAGE,
+                        p1=0x00,
+                        p2=0x00,
+                        cdata=chunk)
+            elif i == last_chunk:
+                yield True, self._serialize(cla=self.CLA,
+                        ins=InsType.SIGN_PERSONAL_MESSAGE,
+                        p1=0x80,
+                        p2=0x00,
+                        cdata=chunk)
+            else:
+                yield False, self._serialize(cla=self.CLA,
+                        ins=InsType.SIGN_PERSONAL_MESSAGE,
+                        p1=0x80,
+                        p2=0x00,
+                        cdata=chunk)
+
+    def clear_sign_tx(self, bip32_path: str, transaction: bytes) -> Tuple[bool,bytes]:
+        cdata = packed_bip32_path_from_string(bip32_path)
+        cdata = cdata + transaction
+        last_chunk = len(cdata) // MAX_APDU_LEN
+
+        # The generator allows to send apdu frames because we can't send an apdu > 255
+        for i, (chunk) in enumerate(chunked(MAX_APDU_LEN, cdata)):
+            if i == 0 and i == last_chunk:
+                yield True, self._serialize(cla=self.CLA,
+                        ins=InsType.CLEAR_SIGN,
+                        p1=0x10,
+                        p2=0x00,
+                        cdata=chunk)
+            elif i == 0:
+                yield False, self._serialize(cla=self.CLA,
+                        ins=InsType.CLEAR_SIGN,
+                        p1=0x00,
+                        p2=0x00,
+                        cdata=chunk)
+            elif i == last_chunk:
+                yield True, self._serialize(cla=self.CLA,
+                        ins=InsType.CLEAR_SIGN,
+                        p1=0x90,
+                        p2=0x00,
+                        cdata=chunk)
+            else:
+                yield False, self._serialize(cla=self.CLA,
+                        ins=InsType.CLEAR_SIGN,
+                        p1=0x80,
+                        p2=0x00,
+                        cdata=chunk)
