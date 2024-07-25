@@ -83,7 +83,7 @@ __attribute__((noinline)) static uint8_t finalize_parsing_helper(bool direct) {
             if (pluginFinalize.tokenLookup1 != NULL) {
                 PRINTF("Lookup1: %.*H\n", ADDRESS_SIZE, pluginFinalize.tokenLookup1);
                 pluginProvideInfo.item1 =
-                    getKnownExtraToken(pluginFinalize.tokenLookup1, &transactionContext);
+                    getKnownExtraToken(pluginFinalize.tokenLookup1, &global_ctx.transactionContext);
                 if (pluginProvideInfo.item1 != NULL) {
                     PRINTF("Token1 ticker: %s\n", pluginProvideInfo.item1->token.ticker);
                 }
@@ -91,7 +91,7 @@ __attribute__((noinline)) static uint8_t finalize_parsing_helper(bool direct) {
             if (pluginFinalize.tokenLookup2 != NULL) {
                 PRINTF("Lookup2: %.*H\n", ADDRESS_SIZE, pluginFinalize.tokenLookup2);
                 pluginProvideInfo.item2 =
-                    getKnownExtraToken(pluginFinalize.tokenLookup2, &transactionContext);
+                    getKnownExtraToken(pluginFinalize.tokenLookup2, &global_ctx.transactionContext);
                 if (pluginProvideInfo.item2 != NULL) {
                     PRINTF("Token2 ticker: %s\n", pluginProvideInfo.item2->token.ticker);
                 }
@@ -163,7 +163,7 @@ int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLe
 
     // initialize context
     if ((p1 == P1_FIRST) || (p1 == P1_SIGN)) {
-        off_t ret = read_bip32_path(workBuffer, dataLength, &transactionContext.bip32_path);
+        off_t ret = read_bip32_path(workBuffer, dataLength, &global_ctx.transactionContext.bip32_path);
         if (ret < 0) {
             return io_send_sw(E_INCORRECT_BIP32_PATH);
         }
@@ -222,7 +222,7 @@ int handleClearSign(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint16_t dataLe
                                CX_LAST,
                                workBuffer,
                                0,
-                               transactionContext.hash,
+                               global_ctx.transactionContext.hash,
                                32));
 
 #ifdef PLUGIN_TEST_LOCAL

@@ -34,13 +34,11 @@ char TRC20Action[9];
 char TRC20ActionSendAllow[8];
 char fullHash[HASH_SIZE * 2 + 1];
 int8_t votes_count;
-transactionContext_t transactionContext;
-publicKeyContext_t publicKeyContext;
-messageSigningContext712_t messageSigningContext712;
+tmpCtx_t global_ctx;
 strings_t strings;
 
 bool ui_callback_address_ok(bool display_menu) {
-    helper_send_response_pubkey(&publicKeyContext);
+    helper_send_response_pubkey(&global_ctx.publicKeyContext);
 
     if (display_menu) {
         // Display back the original UX
@@ -53,12 +51,12 @@ bool ui_callback_address_ok(bool display_menu) {
 bool ui_callback_signMessage_ok(bool display_menu) {
     bool ret = true;
 
-    if (signTransaction(&transactionContext) != 0) {
+    if (signTransaction(&global_ctx.transactionContext) != 0) {
         io_send_sw(E_SECURITY_STATUS_NOT_SATISFIED);
         ret = false;
     } else {
-        io_send_response_pointer(transactionContext.signature,
-                                 transactionContext.signatureLength,
+        io_send_response_pointer(global_ctx.transactionContext.signature,
+                                 global_ctx.transactionContext.signatureLength,
                                  E_OK);
     }
 
@@ -84,12 +82,12 @@ bool ui_callback_tx_cancel(bool display_menu) {
 bool ui_callback_tx_ok(bool display_menu) {
     bool ret = true;
 
-    if (signTransaction(&transactionContext) != 0) {
+    if (signTransaction(&global_ctx.transactionContext) != 0) {
         io_send_sw(E_SECURITY_STATUS_NOT_SATISFIED);
         ret = false;
     } else {
-        io_send_response_pointer(transactionContext.signature,
-                                 transactionContext.signatureLength,
+        io_send_response_pointer(global_ctx.transactionContext.signature,
+                                 global_ctx.transactionContext.signatureLength,
                                  E_OK);
     }
 
@@ -108,8 +106,8 @@ bool ui_callback_ecdh_ok(bool display_menu) {
 
     // Get private key
     err = bip32_derive_init_privkey_256(CX_CURVE_256K1,
-                                        transactionContext.bip32_path.indices,
-                                        transactionContext.bip32_path.length,
+                                        global_ctx.transactionContext.bip32_path.indices,
+                                        global_ctx.transactionContext.bip32_path.length,
                                         &privateKey,
                                         NULL);
     if (err != CX_OK) {
@@ -118,7 +116,7 @@ bool ui_callback_ecdh_ok(bool display_menu) {
 
     err = cx_ecdh_no_throw(&privateKey,
                            CX_ECDH_POINT,
-                           transactionContext.signature,
+                           global_ctx.transactionContext.signature,
                            65,
                            G_io_apdu_buffer,
                            sizeof(G_io_apdu_buffer));
@@ -203,8 +201,8 @@ bool ui_callback_signMessage712_v0_ok(bool display_menu) {
 
     if (cx_hash_no_throw((cx_hash_t *) &sha3,
                          0,
-                         messageSigningContext712.domainHash,
-                         sizeof(messageSigningContext712.domainHash),
+                         global_ctx.messageSigningContext712.domainHash,
+                         sizeof(global_ctx.messageSigningContext712.domainHash),
                          NULL,
                          0) != CX_OK) {
         return false;
@@ -212,8 +210,8 @@ bool ui_callback_signMessage712_v0_ok(bool display_menu) {
 
     if (cx_hash_no_throw((cx_hash_t *) &sha3,
                          CX_LAST,
-                         messageSigningContext712.messageHash,
-                         sizeof(messageSigningContext712.messageHash),
+                         global_ctx.messageSigningContext712.messageHash,
+                         sizeof(global_ctx.messageSigningContext712.messageHash),
                          hash,
                          sizeof(hash)) != CX_OK) {
         return false;
@@ -223,8 +221,8 @@ bool ui_callback_signMessage712_v0_ok(bool display_menu) {
     io_seproxyhal_io_heartbeat();
     // Get private key
     err = bip32_derive_init_privkey_256(CX_CURVE_256K1,
-                                        messageSigningContext712.bip32Path,
-                                        messageSigningContext712.pathLength,
+                                        global_ctx.messageSigningContext712.bip32Path,
+                                        global_ctx.messageSigningContext712.pathLength,
                                         &privateKey,
                                         NULL);
     if (err != CX_OK) {

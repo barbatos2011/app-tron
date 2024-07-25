@@ -35,7 +35,7 @@ int handleSignPersonalMessage(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint1
     cx_sha3_t sha3;
 
     if ((p1 == P1_FIRST) || (p1 == P1_SIGN)) {
-        off_t ret = read_bip32_path(workBuffer, dataLength, &transactionContext.bip32_path);
+        off_t ret = read_bip32_path(workBuffer, dataLength, &global_ctx.transactionContext.bip32_path);
         if (ret < 0) {
             return io_send_sw(E_INCORRECT_BIP32_PATH);
         }
@@ -79,25 +79,26 @@ int handleSignPersonalMessage(uint8_t p1, uint8_t p2, uint8_t *workBuffer, uint1
                                    CX_LAST,
                                    workBuffer,
                                    0,
-                                   transactionContext.hash,
+                                   global_ctx.transactionContext.hash,
                                    32));
 #ifdef HAVE_BAGL
 #define HASH_LENGTH 4
-        format_hex(transactionContext.hash, HASH_LENGTH / 2, fullContract, sizeof(fullContract));
+        format_hex(global_ctx.transactionContext.hash, HASH_LENGTH / 2, fullContract, sizeof(fullContract));
         fullContract[HASH_LENGTH] = '.';
         fullContract[HASH_LENGTH + 1] = '.';
         fullContract[HASH_LENGTH + 2] = '.';
-        format_hex(transactionContext.hash + 32 - HASH_LENGTH / 2,
+        format_hex(global_ctx.transactionContext.hash + 32 - HASH_LENGTH / 2,
                    HASH_LENGTH / 2,
                    fullContract + HASH_LENGTH + 3,
                    sizeof(fullContract) - (HASH_LENGTH + 3));
 #else
-        format_hex(transactionContext.hash,
-                   sizeof(transactionContext.hash),
+        format_hex(global_ctx.transactionContext.hash,
+                   sizeof(global_ctx.transactionContext.hash),
                    fullContract,
                    sizeof(fullContract));
 #endif
-        if (initPublicKeyContext(&transactionContext.bip32_path, fromAddress) != 0) {
+        publicKeyContext_t tmp_public_key_ctx;
+        if (initPublicKeyContext(&global_ctx.transactionContext.bip32_path, fromAddress, &tmp_public_key_ctx) != 0) {
             return io_send_sw(E_SECURITY_STATUS_NOT_SATISFIED);
         }
 

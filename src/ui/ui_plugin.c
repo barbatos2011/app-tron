@@ -36,17 +36,17 @@ void tron_plugin_prepare_query_contract_UI(tronQueryContractUI_t *queryContractU
     memset((uint8_t *) queryContractUI, 0, sizeof(tronQueryContractUI_t));
 
     // If no extra information was found, set the pointer to NULL
-    if (NO_EXTRA_INFO(transactionContext, 1)) {
+    if (NO_EXTRA_INFO(global_ctx.transactionContext, 1)) {
         queryContractUI->item1 = NULL;
     } else {
-        queryContractUI->item1 = &transactionContext.extraInfo[1];
+        queryContractUI->item1 = &global_ctx.transactionContext.extraInfo[1];
     }
 
     // If no extra information was found, set the pointer to NULL
-    if (NO_EXTRA_INFO(transactionContext, 0)) {
+    if (NO_EXTRA_INFO(global_ctx.transactionContext, 0)) {
         queryContractUI->item2 = NULL;
     } else {
-        queryContractUI->item2 = &transactionContext.extraInfo[0];
+        queryContractUI->item2 = &global_ctx.transactionContext.extraInfo[0];
     }
 
     queryContractUI->screenIndex = screenIndex;
