@@ -38,6 +38,7 @@ typedef enum {
     APPROVAL_UNDELEGATE_RESOURCE_TRANSACTION,
     APPROVAL_WITHDRAWEXPIREUNFREEZE_TRANSACTION,
     APPROVAL_SIGN_TIP72_TRANSACTION,
+    APPROVAL_CLEAR_SIGN_TRANSFER,
 } ui_approval_state_t;
 
 void ux_flow_display(ui_approval_state_t state, bool warning);

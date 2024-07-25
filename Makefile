@@ -55,7 +55,7 @@ ENABLE_NBGL_QRCODE = 1
 # Enabling DEBUG flag will enable PRINTF and disable optimizations
 DEBUG ?= 0
 
-APP_SOURCE_PATH  += src
+APP_SOURCE_PATH  += src_common src
 
 .PHONY: proto
 proto:
@@ -69,7 +69,9 @@ cleanall : clean
 NANOPB_DIR = nanopb
 
 CFLAGS += "-I$(NANOPB_DIR)" -Iproto
-DEFINES   += PB_NO_ERRMSG=1
+DEFINES += PB_NO_ERRMSG=1
+DEFINES += HAVE_CAL_TEST_KEY
+DEFINES += PLUGIN_TEST_LOCAL
 SOURCE_FILES += $(NANOPB_DIR)/pb_encode.c $(NANOPB_DIR)/pb_decode.c $(NANOPB_DIR)/pb_common.c
 APP_SOURCE_PATH += proto
 

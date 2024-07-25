@@ -26,10 +26,19 @@
 #include "ui_globals.h"
 #include "ui_review_menu.h"
 #include "ui_idle_menu.h"
+#include "ui_plugin.h"
 
 // Macros
 #define WARNING_TYPES_NUMBER 2
 #define MAX_TX_FIELDS        20
+
+// 1 more than actually displayed on screen, because of calculations in StaticReview
+#define MAX_PLUGIN_ITEMS 8
+#define TAG_MAX_LEN      43
+#define VALUE_MAX_LEN    79
+// these buffers are used as circular
+static char title_buffer[MAX_PLUGIN_ITEMS][TAG_MAX_LEN];
+static char msg_buffer[MAX_PLUGIN_ITEMS][VALUE_MAX_LEN];
 
 static const char *stringLabelSenderAddress = "From";
 static const char *stringLabelRecipientAddress = "To";
@@ -68,6 +77,7 @@ static void customContractWarningChoice(bool reject);
 static void reviewChoice(bool confirm);
 static void rejectConfirmation(void);
 static void rejectChoice(void);
+static uint8_t setTagValuePairs(void);
 
 static void dataWarningChoice(bool accept) {
     if (accept) {
@@ -169,6 +179,27 @@ static void rejectChoice(void) {
                         "Yes, Reject",
                         "Go back to transaction",
                         rejectConfirmation);
+}
+
+static uint8_t setTagValuePairs(void) {
+    uint8_t nbPairs = 0;
+    uint8_t pairIndex = 0;
+    uint8_t counter = 0;
+
+    for (pairIndex = 0; pairIndex < dataContext.tokenContext.pluginUiMaxItems; pairIndex++) {
+        // for the next dataContext.tokenContext.pluginUiMaxItems items, get tag/value from
+        // plugin_ui_get_item_internal()
+        dataContext.tokenContext.pluginUiCurrentItem = pairIndex;
+        plugin_ui_get_item_internal(title_buffer[counter],
+                                    TAG_MAX_LEN,
+                                    msg_buffer[counter],
+                                    VALUE_MAX_LEN);
+        txInfos.fields[nbPairs+1].item = title_buffer[counter];
+        txInfos.fields[nbPairs+1].value = msg_buffer[counter];
+        nbPairs++;
+        LEDGER_ASSERT((++counter < MAX_PLUGIN_ITEMS), "Too many items for plugin\n");
+    }
+    return nbPairs;
 }
 
 static char *format_hash(const uint8_t *hash, char *buffer, size_t buffer_size, size_t offset) {
@@ -418,6 +449,15 @@ static void prepareTxInfos(ui_approval_state_t state, bool data_warning) {
             pairList.nbPairs = 1;
             txInfos.flowTitle = "Review transaction to\nWithdraw Unfreeze";
             infoLongPress.text = "Sign transaction to\nWithdraw";
+            break;
+        case APPROVAL_CLEAR_SIGN_TRANSFER:
+            plugin_ui_get_id();
+            txInfos.fields[0].item = addressSummary;
+            txInfos.fields[0].value = fullContract;
+            pairList.nbPairs = 1;
+            pairList.nbPairs += setTagValuePairs();
+            txInfos.flowTitle = "Review Transaction";
+            infoLongPress.text = "Sign Transaction";
             break;
         default:
             PRINTF("This should not happen !\n");

@@ -40,26 +40,6 @@ void getAddressFromPublicKey(const uint8_t *publicKey, uint8_t address[static AD
     address[0] = ADD_PRE_FIX_BYTE_MAINNET;
 }
 
-void getBase58FromAddress(const uint8_t address[static ADDRESS_SIZE], char *out, bool truncate) {
-    uint8_t sha256[HASH_SIZE];
-    uint8_t addchecksum[ADDRESS_SIZE + 4];
-
-    cx_hash_sha256(address, ADDRESS_SIZE, sha256, HASH_SIZE);
-    cx_hash_sha256(sha256, HASH_SIZE, sha256, HASH_SIZE);
-
-    memmove(addchecksum, address, ADDRESS_SIZE);
-    memmove(addchecksum + ADDRESS_SIZE, sha256, 4);
-
-    base58_encode(addchecksum, sizeof(addchecksum), out, BASE58CHECK_ADDRESS_SIZE);
-    out[BASE58CHECK_ADDRESS_SIZE] = '\0';
-    if (truncate) {
-        memmove((void *) out + 5, "...", 3);
-        memmove((void *) out + 8,
-                (const void *) (out + BASE58CHECK_ADDRESS_SIZE - 5),
-                6);  // include \0 char
-    }
-}
-
 void getBase58FromPublicKey(const uint8_t *publicKey, char *address58, bool truncate) {
     uint8_t address[ADDRESS_SIZE];
 

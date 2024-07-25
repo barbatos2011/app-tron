@@ -20,8 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "uint256.h"
-
-static const char HEXDIGITS[] = "0123456789abcdef";
+#include "common_utils.h"
 
 static uint64_t readUint64BE(uint8_t *buffer) {
     return (((uint64_t) buffer[0]) << 56) | (((uint64_t) buffer[1]) << 48) |

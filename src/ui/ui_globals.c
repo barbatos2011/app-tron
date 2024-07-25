@@ -22,6 +22,8 @@
 #include "crypto_helpers.h"
 #include "ui_idle_menu.h"
 #include "app_errors.h"
+#include "tron_plugin_helper.h"
+#include "ui_plugin.h"
 
 volatile uint8_t customContractField;
 char fromAddress[BASE58CHECK_ADDRESS_SIZE + 1 + 5];  // 5 extra bytes used to inform MultSign ID

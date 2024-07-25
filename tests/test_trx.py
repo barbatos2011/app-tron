@@ -13,7 +13,7 @@ from pathlib import Path
 from Crypto.Hash import keccak
 from cryptography.hazmat.primitives.asymmetric import ec
 from inspect import currentframe
-from tron import TronClient, Errors, CLA, InsType
+from tron import TronClient, Errors, CLA, InsType, TronCommandBuilder
 from ragger.bip import pack_derivation_path
 from utils import check_tx_signature, check_hash_signature
 from eth_keys import KeyAPI
@@ -53,6 +53,22 @@ class TestTRX():
                            snappath=path,
                            text=text,
                            warning_approve=warning_approve)
+        assert check_tx_signature(tx, resp.data[0:65],
+                                  client.getAccount(0)['publicKey'][2:])
+
+    def clear_sign_and_validate(self,
+                          client,
+                          firmware,
+                          text_index,
+                          tx,
+                          signatures=[]):
+        path = Path(currentframe().f_back.f_code.co_name)
+        resp = client.clear_sign(client.getAccount(0)['path'],
+                           tx,
+                           signatures=signatures,
+                           snappath=path,
+                           text=None,
+                           navigate=False)
         assert check_tx_signature(tx, resp.data[0:65],
                                   client.getAccount(0)['publicKey'][2:])
 
@@ -656,3 +672,29 @@ class TestTRX():
                 owner_address=bytes.fromhex(
                     client.getAccount(0)['addressHex'])))
         self.sign_and_validate(client, firmware, 0, tx)
+
+    def test_trx_set_external_plugin(self, backend, firmware, navigator):
+        builder = TronCommandBuilder(True)
+
+        apdu = builder.set_external_plugin("PluginBoilerplate",
+                    bytes.fromhex('410e1bce983f78f8913002c3f7e52daf78de6da2cb'),
+                    bytes.fromhex('a9059cbb'),
+                    bytes.fromhex('3045022100c6ed1e65f3c1a58fff2348c90e5945ae419e946f71142be6a5210333dd1d8ea7022010cdcf93e2895087194961c360ef24847c5c2c4c1956b02ece931fa4aed174ec'))
+
+        resp = backend.exchange(apdu[0], apdu[1], apdu[2], apdu[3], apdu[5:])
+        print(resp.data.hex())
+        # pytest ./tests/ -k "set_external_plugin" --tb=short -v --device nanosp --log_apdu_file tests/test.log
+
+    def test_trx_clear_sign_normal(self, backend, firmware, navigator):
+        client = TronClient(backend, firmware, navigator)
+        tx = bytes.fromhex('0a02d20b220892915c91841dd16f40d097fec5f0315aae01081f12a9010a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412740a15410dfba2397e8746cddd023d7670d8e0cdc1d497b81215410e1bce983f78f8913002c3f7e52daf78de6da2cb2244a9059cbb000000000000000000000000573708726db88a32c1b9c828fef508577cfb8483000000000000000000000000000000000000000000000000000000000000000a70dac5fac5f031900180ade204')
+        self.clear_sign_and_validate(client, firmware, 0, tx)
+        # pytest ./tests/ -k "clear_sign_normal" --tb=short -v --device nanosp --log_apdu_file tests/test.log
+
+    def test_trx_clear_sign_with_big_size(self, backend, firmware, navigator):
+        client = TronClient(backend, firmware, navigator)
+        builder = TronCommandBuilder(True)
+
+        tx = bytes.fromhex('0a02ec9f2208a838117fc1af203a40a88783b5813252ff017465737431746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746574657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573747465737474657374746573735ad202081f12cb020a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e74726163741295020a15410dfba2397e8746cddd023d7670d8e0cdc1d497b81215410e1bce983f78f8913002c3f7e52daf78de6da2cb22e40138ed17390000000000000000000000000000000000000000000000c1d25decd18aa2b81b0000000000000000000000000000000000000000000000c1d25decd18aa2b81b00000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000573708726db88a32c1b9c828fef508577cfb848300000000000000000000000000000000000000000000000000000000611e29fd0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000fdb67e4809d920096050e4b0c7d4f8f2ea27f699286470c6b4ffb48132900180ade204')
+        self.clear_sign_and_validate(client, firmware, 0, tx)
+        # pytest ./tests/ -k "clear_sign_with_big_size" --tb=short -v --device nanosp --golden_run --log_apdu_file tests/snapshots-tmp/test.log

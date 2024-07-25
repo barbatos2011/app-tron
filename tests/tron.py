@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 import sys
 import base58
-
+import logging
+import struct
 from contextlib import contextmanager
 from enum import IntEnum
 from pathlib import Path
-from typing import Tuple, Generator
-from struct import unpack
+from typing import Tuple, Generator, Union, Dict, cast
 from bip_utils import Bip39SeedGenerator, Bip32Slip10Secp256k1
 from bip_utils.addr import TrxAddrEncoder
 from eth_keys import keys
@@ -16,6 +16,9 @@ from ragger.backend.interface import BackendInterface, RAPDU
 from ragger.navigator import NavInsID, NavIns
 from ragger.bip import pack_derivation_path
 from conftest import MNEMONIC
+from utils import packed_bip32_path_from_string, write_varint
+from speculos.client import ApduException
+
 '''
 Tron Protobuf
 '''
@@ -61,6 +64,8 @@ class InsType(IntEnum):
     GET_APP_CONFIGURATION = 0x06  # Version and settings
     SIGN_PERSONAL_MESSAGE = 0x08
     GET_ECDH_SECRET = 0x0A
+    EXTERNAL_PLUGIN_SETUP     = 0x12
+    CLEAR_SIGN =           0xC4
     SIGN_TIP_712_MESSAGE = 0x0C
 
 
@@ -299,7 +304,7 @@ class TronClient:
     def unpackGetVersionResponse(self,
                                  response: bytes) -> Tuple[int, int, int]:
         assert (len(response) == GET_VERSION_RESP_LEN)
-        major, minor, patch = unpack("BBB", response[1:])
+        major, minor, patch = struct.unpack("BBB", response[1:])
         return major, minor, patch
 
     def sign(self,
@@ -363,3 +368,169 @@ class TronClient:
         else:
             return self._client.exchange(CLA, InsType.SIGN, p1, 0x00,
                                          messages[-1])
+
+    def send_apdu(self, apdu: bytes) -> bytes:
+        try:
+            self._client.exchange(cla=apdu[0], ins=apdu[1],
+                                        p1=apdu[2], p2=apdu[3],
+                                        data=apdu[5:])
+        except ApduException as error:
+            raise DeviceException(error_code=error.sw, ins=InsType.INS_SIGN_TX)
+
+    def clear_sign(self,
+             path: str,
+             tx,
+             signatures=[],
+             snappath: Path = None,
+             text: str = "",
+             navigate: bool = True):
+        messages = []
+
+        # Split transaction in multiples APDU
+        data = pack_derivation_path(path)
+        while len(tx) > 0:
+            if len(tx) - len(data) > MAX_APDU_LEN:
+                newpos = MAX_APDU_LEN - len(data)
+            else:
+                newpos = len(tx)
+
+            if (len(data) + newpos) <= MAX_APDU_LEN:
+                # append to data
+                data += tx[:newpos]
+                tx = tx[newpos:]
+            else:
+                # add chunk
+                messages.append(data)
+                data = bytearray()
+                continue
+        # append last
+        messages.append(data)
+
+        # Send all the messages expect the last
+        for i, data in enumerate(messages[:-1]):
+            if i == 0:
+                p1 = P1.FIRST
+            else:
+                p1 = P1.MORE
+
+            self._client.exchange(CLA, InsType.CLEAR_SIGN, p1, 0x00, data)
+
+        # Send last message
+        if len(messages) == 1:
+            p1 = P1.SIGN
+        else:
+            p1 = P1.LAST
+
+        if navigate:
+            with self._client.exchange_async(CLA, InsType.CLEAR_SIGN, p1, 0x00,
+                                             messages[-1]):
+                self.navigate(snappath, text)
+            return self._client.last_async_response
+        else:
+            return self._client.exchange(CLA, InsType.CLEAR_SIGN, p1, 0x00,
+                                         messages[-1])
+
+class DeviceException(Exception):  # pylint: disable=too-few-public-methods
+    exc: Dict[int, Any] = {
+    }
+
+    def __new__(cls,
+                error_code: int,
+                ins: Union[int, IntEnum, None] = None,
+                message: str = ""
+                ) -> Any:
+        error_message: str = (f"Error in {ins!r} command"
+                              if ins else "Error in command")
+
+        if error_code in DeviceException.exc:
+            return DeviceException.exc[error_code](hex(error_code),
+                                                   error_message,
+                                                   message)
+
+        return UnknownDeviceError(hex(error_code), error_message, message)
+
+class UnknownDeviceError(Exception):
+    pass
+
+
+MAX_APDU_LEN: int = 255
+
+
+def chunked(size, source):
+    for i in range(0, len(source), size):
+        yield source[i:i+size]
+
+class TronCommandBuilder:
+    """APDU command builder for the Boilerplate application.
+
+    Parameters
+    ----------
+    debug: bool
+        Whether you want to see logging or not.
+
+    Attributes
+    ----------
+    debug: bool
+        Whether you want to see logging or not.
+
+    """
+    CLA: int = 0xE0
+
+    def __init__(self, debug: bool = False):
+        """Init constructor."""
+        self.debug = debug
+
+    def _serialize(self,
+                   cla: int,
+                   ins: InsType,
+                   p1: int,
+                   p2: int,
+                   cdata: bytes = bytes()) -> bytes:
+        """Serialize the whole APDU command (header + data).
+
+        Parameters
+        ----------
+        cla : int
+            Instruction class: CLA (1 byte)
+        ins : Union[int, IntEnum]
+            Instruction code: INS (1 byte)
+        p1 : int
+            Instruction parameter 1: P1 (1 byte).
+        p2 : int
+            Instruction parameter 2: P2 (1 byte).
+        cdata : bytes
+            Bytes of command data.
+
+        Returns
+        -------
+        bytes
+            Bytes of a complete APDU command.
+
+        """
+
+        header = bytearray()
+        header.append(cla)
+        header.append(ins)
+        header.append(p1)
+        header.append(p2)
+        header.append(len(cdata))
+        return header + cdata
+
+    def _string_to_bytes(self, string: str) -> bytes:
+        data = bytearray()
+        for char in string:
+            data.append(ord(char))
+        return data
+
+    def set_external_plugin(self, plugin_name: str, contract_address: bytes, selector: bytes, sig: bytes) -> bytes:
+        data = bytearray()
+        data.append(len(plugin_name))
+        data += self._string_to_bytes(plugin_name)
+        data += contract_address
+        data += selector
+        data += sig
+
+        return self._serialize(self.CLA, InsType.EXTERNAL_PLUGIN_SETUP,
+                               P1.FIRST,
+                               0x00,
+                               data)
