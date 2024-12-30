@@ -57,6 +57,27 @@ DEBUG ?= 0
 
 APP_SOURCE_PATH  += src
 
+ifneq ($(TARGET_NAME),TARGET_NANOS)
+    DEFINES	+= HAVE_TIP712_FULL_SUPPORT
+	DEFINES += HAVE_DYN_MEM_ALLOC
+endif
+
+# ENS
+ifneq ($(TARGET_NAME),TARGET_NANOS)
+    DEFINES += HAVE_TRUSTED_NAME
+    TRUSTED_NAME_TEST_KEY ?= 0
+    ifneq ($(TRUSTED_NAME_TEST_KEY),0)
+        DEFINES += HAVE_TRUSTED_NAME_TEST_KEY
+    endif
+endif
+
+ifneq ($(CAL_TEST_KEY),0)
+    # Key used in our test framework
+    DEFINES += HAVE_CAL_TEST_KEY
+endif
+
+DEFINES += APP_TICKER=\"$(TICKER)\" APP_CHAIN_ID=1151668124
+
 .PHONY: proto
 proto:
 	$(MAKE) -C proto
